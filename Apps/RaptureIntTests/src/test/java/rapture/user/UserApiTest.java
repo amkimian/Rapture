@@ -188,14 +188,14 @@ public class UserApiTest {
         userRaptureLogin.login();
 
         HttpUserApi userApiLocal = new HttpUserApi(userRaptureLogin);
-        Set<String> userKeySet = new HashSet<String>();
+        Set<String> userKeySet = new HashSet<>();
         for (int i = 0; i < KEY_COUNT; i++)
             userKeySet.add("testkey" + System.nanoTime());
 
         for (String currKey : userKeySet)
             userApiLocal.addApiKey(currKey);
 
-        Set<String> allUserKeys = new HashSet<String>();
+        Set<String> allUserKeys = new HashSet<>();
         for (String currKey : userApiLocal.getApiKeyPairs())
             allUserKeys.add(currKey.split("/")[0]);
         Assert.assertEquals(allUserKeys, userKeySet);
@@ -214,7 +214,7 @@ public class UserApiTest {
         userRaptureLogin.login();
 
         HttpUserApi userApiLocal = new HttpUserApi(userRaptureLogin);
-        Set<String> userKeySet = new HashSet<String>();
+        Set<String> userKeySet = new HashSet<>();
         int KEY_COUNT = 5;
         for (int i = 0; i < KEY_COUNT; i++)
             userKeySet.add("testkey" + System.nanoTime());
@@ -230,7 +230,7 @@ public class UserApiTest {
             userKeySet.remove(currPair[0]);
         }
 
-        Set<String> allUserKeys = new HashSet<String>();
+        Set<String> allUserKeys = new HashSet<>();
 
         for (String currKey : userApiLocal.getApiKeyPairs()) {
             allUserKeys.add(currKey.split("/")[0]);

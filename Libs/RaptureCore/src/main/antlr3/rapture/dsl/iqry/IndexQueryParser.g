@@ -22,10 +22,15 @@ qry returns [IndexQuery qry]
 @init {
   $qry = new IndexQuery();
 }     
-: SELECT (DISTINCT { $qry.setDistinct(true); } )? x=fieldSet { $qry.setSelect($x.select); } (WHERE w=whereClause { $qry.setWhere($w.where); })?
-  (ORDER BY o=fieldSet { $qry.setOrderBy($o.select); } (ASC { $qry.setOrderDirection(OrderDirection.ASC); } | DESC { $qry.setOrderDirection(OrderDirection.DESC); })? )?
-  (LIMIT l=NUMBER { $qry.setLimit(Integer.parseInt($l.text)); })?
-  (SKIP n=NUMBER { $qry.setSkip(Integer.parseInt($n.text)); })?  
+: SELECT (DISTINCT { $qry.setDistinct(true); } )? x=fieldSet { $qry.setSelect($x.select); }
+  (WHERE w=whereClause { $qry.setWhere($w.where); })?
+  (
+     (ORDER BY o=fieldSet { $qry.setOrderBy($o.select); } (ASC { $qry.setOrderDirection(OrderDirection.ASC); } | DESC { $qry.setOrderDirection(OrderDirection.DESC); })? ) 
+   | (LIMIT l=NUMBER { $qry.setLimit(Integer.parseInt($l.text)); }) 
+   | (SKIP n=NUMBER { $qry.setSkip(Integer.parseInt($n.text)); })
+   | (s=ID) { if ($s != null) throw new IllegalArgumentException("Unexpected token "+$s.text+" found in "+input); }
+   | (s=STRING) { if ($s != null) throw new IllegalArgumentException("Unexpected token "+$s.text+" found in "+input); }
+  )*
   ;
 
 fieldSet returns [SelectList select]

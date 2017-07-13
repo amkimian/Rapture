@@ -3,13 +3,14 @@ include 'RaptureField'
 include "CodeGen:CodeGenLib", "CodeGen:ApiGen", "CodeGen:PersistenceGen", "CodeGen:PersistenceGenLib"
 //include "CodeGen:PythonLib"
 include "RaptureAddins:MongoDb","RaptureAddins:RabbitMQ","RaptureAddins:Cassandra","RaptureAddins:ElasticSearch"
-include "RaptureAddins:Postgres", "RaptureAddins:JDBC", "RaptureAddins:ZooKeeper"
+include "RaptureAddins:Postgres", "RaptureAddins:JDBC", "RaptureAddins:ZooKeeper", "RaptureAddins:GoogleCloud"
 include "RaptureAddins:ElasticSearch"
 include "RaptureWebServlet"
 include "RaptureCommon"
 include "PluginInstallerLib", "SelfPluginInstallerLib"
 include "RaptureAppConfig"
 include "WorkflowsCommon"
+include "WorkflowsCommonSteps"
 include 'WorkflowsCore'
 include 'SlateDocGenerator'
 include 'ExplodedDeps'

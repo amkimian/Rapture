@@ -23,15 +23,15 @@
  */
 package rapture.index;
 
-import rapture.common.impl.jackson.JacksonUtil;
-import rapture.common.model.DocumentMetadata;
-import rapture.dsl.idef.FieldDefinition;
-import rapture.dsl.idef.IndexDefinition;
-
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+
+import rapture.common.impl.jackson.JacksonUtil;
+import rapture.common.model.DocumentMetadata;
+import rapture.dsl.idef.FieldDefinition;
+import rapture.dsl.idef.IndexDefinition;
 
 /**
  * //todo this needs to be updated to truly support multiple indices
@@ -43,6 +43,26 @@ import java.util.Map;
  */
 public class IndexProducer {
     private List<IndexDefinition> indexDefinitions;
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((indexDefinitions == null) ? 0 : indexDefinitions.hashCode());
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null) return false;
+        if (getClass() != obj.getClass()) return false;
+        IndexProducer other = (IndexProducer) obj;
+        if (indexDefinitions == null) {
+            if (other.indexDefinitions != null) return false;
+        } else if (!indexDefinitions.equals(other.indexDefinitions)) return false;
+        return true;
+    }
 
     public IndexProducer(List<IndexDefinition> indexDefinitions) {
         this.indexDefinitions = indexDefinitions; // IndexDefinitionFactory.getDefinition(config.getConfig());

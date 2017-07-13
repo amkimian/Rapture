@@ -57,10 +57,13 @@ import rapture.common.CreateResponse;
 import rapture.common.ErrorWrapper;
 import rapture.common.LogQueryResponse;
 import rapture.common.RaptureFolderInfo;
+import rapture.common.RaptureJobExec;
+import rapture.common.RaptureJobExecStorage;
 import rapture.common.RaptureURI;
 import rapture.common.Scheme;
 import rapture.common.SemaphoreAcquireResponse;
 import rapture.common.WorkOrderExecutionState;
+import rapture.common.WorkflowJobDetails;
 import rapture.common.api.DecisionApi;
 import rapture.common.dp.AppStatusDetails;
 import rapture.common.dp.ContextValueType;
@@ -309,14 +312,19 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
         }
 
         if (!response.getIsAcquired()) {
-            List<String> existingWoDesc = new LinkedList<String>();
+            List<String> existingWoDesc = new LinkedList<>();
             Set<String> existingStakeholderURIs = response.getExistingStakeholderURIs();
             for (String stakeHolderURI : existingStakeholderURIs) {
+
+                WorkOrderDebug debug = Kernel.getDecision().getWorkOrderDebug(context, stakeHolderURI);
+                WorkOrderExecutionState state = (debug == null) ? null : debug.getOrder().getStatus();
+
                 String jobURI = getContextValue(context, stakeHolderURI, ContextVariables.PARENT_JOB_URI);
                 if (jobURI != null) {
-                    existingWoDesc.add(String.format("{workOrderURI=%s, created by jobURI=%s}", stakeHolderURI, jobURI));
+                    existingWoDesc.add(String.format("{workOrderURI=%s in state %s, created by jobURI=%s}", stakeHolderURI,
+                            ((state == null) ? "UNKNOWN" : state.toString()), jobURI));
                 } else {
-                    existingWoDesc.add(String.format("{workOrderURI=%s}", stakeHolderURI));
+                    existingWoDesc.add(String.format("{workOrderURI=%s in state %s}", stakeHolderURI, ((state == null) ? "UNKNOWN" : state.toString())));
                 }
             }
             String error = String
@@ -324,6 +332,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
                             " WorkOrder(s): %s",
                             workflowURI, lockKey, StringUtils.join(existingWoDesc, ", "));
             logger.warn(error);
+
             CreateResponse ret = new CreateResponse();
             ret.setIsCreated(false);
             ret.setMessage(error);
@@ -352,7 +361,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
 
             // 2. The ExecutionContext
             ExecutionContext executionContext = new ExecutionContext();
-            Map<String, String> data = new HashMap<String, String>();
+            Map<String, String> data = new HashMap<>();
             for (Entry<String, String> entry : contextMap.entrySet()) {
                 data.put(entry.getKey(), ContextValueType.LITERAL.marker + entry.getValue());
             }
@@ -401,10 +410,11 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
             DecisionProcessExecutorFactory.getDefault().start(context, worker);
             Kernel.getStackContainer().popStack(context);
             Kernel.getStackContainer().popStack(context);
-
             CreateResponse ret = new CreateResponse();
+            String order = workOrderURI.toString();
             ret.setIsCreated(true);
-            ret.setUri(workOrder.getWorkOrderURI());
+            ret.setUri(order);
+
             return ret;
         }
     }
@@ -426,7 +436,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
     private Map<String, String> setupContextMap(List<ExpectedArgument> expectedArguments, Map<String, String> argsMap) {
         HashMap<String, String> contextMap;
         if (argsMap == null) {
-            contextMap = new HashMap<String, String>();
+            contextMap = new HashMap<>();
         } else {
             contextMap = Maps.newHashMap(argsMap);
         }
@@ -552,7 +562,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
             throw RaptureExceptionFactory.create("Not a valid Workflow URI " + workflowStepURI);
         }
 
-        Map<String, String> contextMap = new HashMap<String, String>();
+        Map<String, String> contextMap = new HashMap<>();
         RaptureURI uri = new RaptureURI(workOrderURI, Scheme.WORKORDER);
         List<ExecutionContextField> ecfs = ExecutionContextFieldStorage.readAll(uri.getFullPath());
         for (ExecutionContextField ecf : ecfs) {
@@ -585,7 +595,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
 
     public List<Worker> getWorkers(WorkOrder workOrder) {
         List<String> workerIds = workOrder.getWorkerIds();
-        List<Worker> workers = new ArrayList<Worker>(workerIds.size());
+        List<Worker> workers = new ArrayList<>(workerIds.size());
         for (String workerId : workerIds) {
             workers.add(getWorkerNotNull(workOrder.getWorkOrderURI(), workerId));
         }
@@ -701,7 +711,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
         String json = getContextValue(ContextFactory.getKernelUser(), workerURI, ERROR_LIST_CONSTANT);
         List<ErrorWrapper> errorList;
         if (json == null) {
-            errorList = new LinkedList<ErrorWrapper>();
+            errorList = new LinkedList<>();
         } else {
             errorList = JacksonUtil.objectFromJson(json, new TypeReference<List<ErrorWrapper>>() {
             });
@@ -807,8 +817,33 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
     }
 
     @Override
+    public Map<String, List<String>> getWorkOrderStatusesByWorkflow(CallingContext context, Long startTimeInstant, String workflowUri) {
+        Map<String, List<String>> ret = new HashMap<>();
+        List<WorkOrder> wos = getWorkOrderObjectsByWorkflow(context, startTimeInstant, workflowUri);
+        for (WorkOrder wo : wos) {
+            String status = wo.getStatus().toString();
+            List<String> workorders = ret.get(status);
+            if (workorders == null) {
+                ret.put(status, new ArrayList<>(Arrays.asList(wo.getWorkOrderURI())));
+            } else {
+                workorders.add(wo.getWorkOrderURI());
+            }
+        }
+        return ret;
+    }
+
+    @Override
     public List<String> getWorkOrdersByWorkflow(CallingContext context, Long startTimeInstant, String workflowUri) {
         List<String> ret = new ArrayList<>();
+        List<WorkOrder> wos = getWorkOrderObjectsByWorkflow(context, startTimeInstant, workflowUri);
+        for (WorkOrder wo : wos) {
+            ret.add(wo.getWorkOrderURI());
+        }
+        return ret;
+    }
+
+    private List<WorkOrder> getWorkOrderObjectsByWorkflow(CallingContext context, Long startTimeInstant, String workflowUri) {
+        List<WorkOrder> ret = new ArrayList<>();
         // if the document://WorkOrder repo doesn't exist, aka no workflows have been run yet, just return empty
         if (!Kernel.getDoc().docRepoExists(context, WorkOrderPathBuilder.getRepoName())) {
             return ret;
@@ -830,10 +865,36 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
             // check if the timestamp is within range and also if there is an matching workflow authority
             if (!startDate.isAfter(potentialTimestamp) && existingTimesWithAuthority.containsKey(String.format("%s%s/", entry.getKey(), uri.getAuthority()))) {
                 String prefix = String.format("%s/%s/%s", entry.getValue().getName(), uri.getAuthority(), uri.getDocPath());
-                List<WorkOrder> workOrders = WorkOrderStorage.readAll(prefix);
-                for (WorkOrder workOrder : workOrders) {
-                    ret.add(workOrder.getWorkOrderURI());
-                }
+                ret.addAll(WorkOrderStorage.readAll(prefix));
+            }
+        }
+        return ret;
+    }
+
+    @Override
+    public WorkOrder getWorkOrderByJobExec(CallingContext context, RaptureJobExec raptureJobExec) {
+        if (raptureJobExec == null) {
+            throw RaptureExceptionFactory.create("Invalid jobexec");
+        }
+        String execDetails = raptureJobExec.getExecDetails();
+        if (StringUtils.isNotBlank(execDetails)) {
+            return getWorkOrder(context, JacksonUtil.objectFromJson(execDetails, WorkflowJobDetails.class).getWorkOrderURI());
+        }
+        return null;
+    }
+
+    @Override
+    public Map<RaptureJobExec, WorkOrder> getJobExecsAndWorkOrdersByDay(CallingContext context, Long startTimeInstant) {
+        Map<RaptureJobExec, WorkOrder> ret = new HashMap<>();
+        List<WorkOrder> workOrders = getWorkOrdersByDay(context, startTimeInstant);
+        for (WorkOrder workOrder : workOrders) {
+            // we find the associated RaptureJobExec using the built-in execution context params
+            String jobUri = ExecutionContextUtil.getValueECF(context, workOrder.getWorkOrderURI(), ContextVariables.PARENT_JOB_URI, null);
+            // this will be blank if its a workorder that was not initiated by a job, so we skip those
+            if (!StringUtils.isBlank(jobUri)) {
+                String execTime = ExecutionContextUtil.getValueECF(context, workOrder.getWorkOrderURI(), ContextVariables.TIMESTAMP, null);
+                log.info(String.format("Retrieving job exec for job uri [%s] and time [%s]", jobUri, execTime));
+                ret.put(RaptureJobExecStorage.readByFields(jobUri, Long.valueOf(execTime)), workOrder);
             }
         }
         return ret;
@@ -871,7 +932,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
         sample.setName(prefix);
         String encodedPrefix = sample.getStoragePath();
         List<AppStatusGroup> groups = AppStatusGroupStorage.readAll(encodedPrefix);
-        List<AppStatus> ret = new LinkedList<AppStatus>();
+        List<AppStatus> ret = new LinkedList<>();
         for (AppStatusGroup group : groups) {
             ret.addAll(group.getIdToStatus().values());
         }
@@ -885,7 +946,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
     @Override
     public List<AppStatusDetails> getAppStatusDetails(CallingContext context, String prefix, List<String> extraContextValues) {
         List<AppStatus> statuses = getAppStatuses(context, prefix);
-        List<AppStatusDetails> detailedList = new ArrayList<AppStatusDetails>(statuses.size());
+        List<AppStatusDetails> detailedList = new ArrayList<>(statuses.size());
         for (AppStatus status : statuses) {
             AppStatusDetails asd = new AppStatusDetails();
             asd.setAppStatus(status);
@@ -894,7 +955,7 @@ public class DecisionApiImpl extends KernelBase implements DecisionApi {
             asd.setLogURI(logURI);
             WorkOrder workOrder = WorkOrderFactory.getWorkOrderNotNull(context, workOrderURI);
             List<Worker> workers = getWorkers(workOrder);
-            Map<String, List<StepRecord>> workerIdToSteps = new HashMap<String, List<StepRecord>>();
+            Map<String, List<StepRecord>> workerIdToSteps = new HashMap<>();
             for (String varAlias : extraContextValues) {
                 String value = getContextValue(context, status.getWorkOrderURI(), varAlias);
                 asd.getExtraContextValues().put(varAlias, value);

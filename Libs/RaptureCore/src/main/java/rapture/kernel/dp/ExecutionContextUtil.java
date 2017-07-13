@@ -25,6 +25,7 @@ package rapture.kernel.dp;
 
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
 
 import rapture.common.CallingContext;
@@ -51,33 +52,59 @@ public class ExecutionContextUtil {
 
         String toEval = realId;
         ContextValueType valueType = ContextValueType.getContextValueType(realId.charAt(0));
-        if (valueType == ContextValueType.VAR) {
-            /*
-             * If a variable, first retrieve the val we need to evaluate
-             */
-            String idNoMarker = realId.substring(1);
-            ExecutionContextField ecf = ExecutionContextFieldStorage.readByFields(workOrderUri, idNoMarker);
-            if (ecf != null) {
-                toEval = ecf.getValue();
+
+        int recursionLimit = 20; // In case somebody accidentally creates a cycle
+        while (--recursionLimit > 0) {
+            if (valueType == ContextValueType.VAR) {
+                /*
+                 * If a variable, first retrieve the val we need to evaluate
+                 */
+                String idNoMarker = toEval.substring(1);
+                String dfault = null;
+                int idx = idNoMarker.indexOf('$');
+                if (idx > 1) {
+                    dfault = idNoMarker.substring(idx + 1);
+                    idNoMarker = idNoMarker.substring(0, idx);
+                }
+
+                ExecutionContextField ecf = ExecutionContextFieldStorage.readByFields(new RaptureURI(workOrderUri).toShortString(), idNoMarker);
+                if (ecf != null) {
+                    toEval = ecf.getValue();
+                    valueType = ContextValueType.getContextValueType(toEval.charAt(0));
+                } else {
+                    toEval = lookupInView(view, idNoMarker);
+                    if (toEval != null) {
+                        valueType = ContextValueType.getContextValueType(toEval.charAt(0));
+                    } else {
+                        toEval = dfault;
+                        valueType = ContextValueType.NULL;
+                    }
+                }
+            }
+            if (valueType == ContextValueType.LINK) {
+                toEval = evalLinkExpression(callingContext, toEval.substring(1));
+                if (StringUtils.isEmpty(toEval)) return toEval;
                 valueType = ContextValueType.getContextValueType(toEval.charAt(0));
+                if (valueType == ContextValueType.NULL)
+                    return toEval;
+            } else if (valueType == ContextValueType.LITERAL) {
+                return evalLiteral(toEval);
+            } else if (valueType == ContextValueType.NULL) {
+                log.debug("Variable " + varAlias + " has no type - assuming Literal");
+                return toEval;
+            } else if (valueType == ContextValueType.TEMPLATE) {
+                toEval = evalTemplateECF(callingContext, workOrderUri, toEval.substring(1), view);
+                valueType = ContextValueType.getContextValueType(toEval.charAt(0));
+                if (valueType == ContextValueType.NULL) {
+                    return toEval;
+                }
             } else {
-                toEval = null;
-                valueType = ContextValueType.NULL;
+                log.error(String.format("Unable to evaluate id='%s', value='%s'", varAlias, toEval));
+                return null;
             }
         }
-        if (valueType == ContextValueType.LINK) {
-            return evalLinkExpression(callingContext, toEval.substring(1));
-        } else if (valueType == ContextValueType.LITERAL) {
-            return evalLiteral(toEval);
-        } else if (valueType == ContextValueType.NULL) {
-            log.warn("Variable " + varAlias + " has no type - assuming Literal");
-            return toEval;
-        } else if (valueType == ContextValueType.TEMPLATE) {
-            return evalTemplateECF(callingContext, workOrderUri, toEval.substring(1), view);
-        } else {
-            log.error(String.format("Unable to evaluate id='%s', value='%s'", varAlias, toEval));
-            return null;
-        }
+        log.error("Recursion limit reached - there must be a cyclic reference ");
+        return null;
     }
 
     private static String evalLiteral(String literalVal) {
@@ -99,7 +126,8 @@ public class ExecutionContextUtil {
         } else {
             String content = Kernel.getDoc().getDoc(ctx, "//" + innerUri.getShortPath());
             if (content == null) {
-                return "";
+                String attr = innerUri.getAttribute();
+                return (attr != null) ? attr : "";
             }
             Map<String, Object> parsedDoc = JacksonUtil.getMapFromJson(content);
             String[] parts = fieldName.split("\\.");
@@ -110,7 +138,10 @@ public class ExecutionContextUtil {
                 Map<String, Object> unchecked = (Map<String, Object>) parsedDoc.get(parts[i]);
                 parsedDoc = unchecked;
             }
-            return parsedDoc.get(parts[parts.length - 1]).toString();
+            Object o = parsedDoc.get(parts[parts.length - 1]);
+            if (o != null) return o.toString();
+            String attr = innerUri.getAttribute();
+            return (attr != null) ? attr : "";
         }
     }
 
@@ -134,9 +165,17 @@ public class ExecutionContextUtil {
                         throw RaptureExceptionFactory.create("'${' has no matching '}' in " + template);
                     }
                     String varName = template.substring(startVar, endVar);
+                    String dfault = null;
+                    int idx = varName.indexOf('$');
+                    if (idx >= 1) {
+                        dfault = varName.substring(idx + 1);
+                        varName = varName.substring(0, idx);
+                    }
+
                     String val = getValueECF(ctx, workOrderUri, varName, view);
                     if (val == null) {
-                        throw RaptureExceptionFactory.create("Variable ${" + varName + "} required but missing");
+                        if (dfault != null) val = dfault;
+                        else throw RaptureExceptionFactory.create("Variable ${" + varName + "} required but missing");
                     }
                     sb.append(val);
                     bolt = endVar + 1;

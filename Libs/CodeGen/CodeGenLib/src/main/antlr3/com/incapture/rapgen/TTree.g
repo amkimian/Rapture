@@ -319,7 +319,7 @@ scope { String apiName; }
 
           StringTemplate servletImpl = %servletImpl(sdkname={sdkName}, apitype={$apiType.text});
           String servletImplPath = "build/generated-sources/main/java/rapture/server/web/" + sdkName + "/servlet/" + $apiType + "Servlet.java";
-          addKernelTemplate(servletImplPath, "1", servletImpl);
+          addWebTemplate(servletImplPath, "1", servletImpl);
       }
 
       //script apis

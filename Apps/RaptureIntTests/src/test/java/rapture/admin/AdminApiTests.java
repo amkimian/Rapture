@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.junit.Assume;
 import org.testng.Assert;
 import org.testng.Reporter;
 import org.testng.annotations.AfterClass;
@@ -40,6 +41,7 @@ import org.testng.annotations.Optional;
 import org.testng.annotations.Parameters;
 import org.testng.annotations.Test;
 
+import rapture.common.CallingContext;
 import rapture.common.RaptureURI;
 import rapture.common.Scheme;
 import rapture.common.client.HttpAdminApi;
@@ -47,6 +49,7 @@ import rapture.common.impl.jackson.MD5Utils;
 import rapture.common.model.RaptureUser;
 import rapture.common.model.RepoConfig;
 import rapture.helper.IntegrationTestHelper;
+import rapture.kernel.ContextFactory;
 
 public class AdminApiTests {
 
@@ -62,21 +65,32 @@ public class AdminApiTests {
         raptureUrl = url;
     }
 
+    @Test
+    public void testCreateUser() throws Exception {
+        CallingContext context = ContextFactory.getKernelUser();
+        String user = "qqqq";
+
+        Assume.assumeTrue(!adminApi.doesUserExist(context, user));
+        adminApi.addUser(context, user, user, MD5Utils.hash16(user), "dave.tong@incapturetechnologies.com");
+        RaptureUser rapuser = adminApi.getUser(context, user);
+        Assert.assertNotNull(rapuser);
+    }
+
     @Test(groups = { "admin", "nightly" })
     public void testGetUsers() {
         int MAX_USERS = 10;
-        Set<String> userSet = new HashSet<String>();
+        Set<String> userSet = new HashSet<>();
         Reporter.log("Adding " + MAX_USERS + " users", true);
         for (int i = 0; i < MAX_USERS; i++) {
             String userName = "testuser" + System.nanoTime();
             String description = "This is Test User";
-            String pwd = "testpassword";
+            String pwd = "";
             String email = userName + "@test.com";
 
             adminApi.addUser(userName, description, MD5Utils.hash16(pwd), email);
             userSet.add(userName);
         }
-        Set<String> raptureUserSet = new HashSet<String>();
+        Set<String> raptureUserSet = new HashSet<>();
         for (RaptureUser ru : adminApi.getAllUsers())
             raptureUserSet.add(ru.getUsername());
         Reporter.log("Checking users exist", true);
@@ -176,8 +190,8 @@ public class AdminApiTests {
 
         Reporter.log("Copying " + srcRepo.getAuthority() + " to " + targetRepo.getAuthority(), true);
         adminApi.copyDocumentRepo(srcRepo.getAuthority(), targetRepo.getAuthority(), false);
-        Map<String, String> srcMap = new HashMap<String, String>();
-        Map<String, String> targetMap = new HashMap<String, String>();
+        Map<String, String> srcMap = new HashMap<>();
+        Map<String, String> targetMap = new HashMap<>();
         for (String uri : helper.getDocApi().listDocsByUriPrefix(RaptureURI.builder(DOCUMENT, srcRepo.getAuthority()).asString(), 2).keySet()) {
             srcMap.put(uri.replace(RaptureURI.builder(DOCUMENT, srcRepo.getAuthority()).asString(),
                     RaptureURI.builder(DOCUMENT, targetRepo.getAuthority()).asString()), helper.getDocApi().getDoc(uri));
@@ -191,7 +205,7 @@ public class AdminApiTests {
 
     @Test(groups = { "admin", "nightly" })
     public void testGetSystemProperties() {
-        List<String> keys = new ArrayList<String>();
+        List<String> keys = new ArrayList<>();
         keys.add("PATH");
         keys.add("HOME");
 
@@ -208,7 +222,7 @@ public class AdminApiTests {
     public void testGetRepoConfig() {
         Reporter.log("Checking default repo names", true);
         List<RepoConfig> repoConfigs = adminApi.getRepoConfig();
-        Set<String> repoNameSet = new HashSet<String>();
+        Set<String> repoNameSet = new HashSet<>();
         for (RepoConfig repoConfig : repoConfigs) {
             repoNameSet.add(repoConfig.getName());
 

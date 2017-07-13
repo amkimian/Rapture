@@ -34,6 +34,7 @@ import static spark.Spark.put;
 import static spark.Spark.secure;
 import static spark.Spark.webSocket;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,8 +57,8 @@ import spark.Request;
 public class RestServer {
 
     private static final Logger log = Logger.getLogger(RestServer.class);
-
     private Map<String, CallingContext> ctxs = new HashMap<>();
+    private static final String APP_KEY = "restserver";
 
     public static void main(String[] args) {
         try {
@@ -74,9 +75,7 @@ public class RestServer {
         setupHttps();
         setupWebSocket();
         setupRoutes();
-        exception(Exception.class, (e, req, res) -> {
-            log.error(String.format("Exception for request: %s [%s]%n[%s]", req.requestMethod(), req.pathInfo(), req.body()), e);
-        });
+        setupExceptionHandling();
     }
 
     private void setupHttps() {
@@ -94,42 +93,24 @@ public class RestServer {
 
         before((req, res) -> {
             log.info("Path is: " + req.pathInfo());
-            if (!req.pathInfo().startsWith("/login")) {
-                CallingContext ctx = ctxs.get(req.session().id());
-                if (ctx == null) {
-                    log.warn("CallingContext not found, rejecting...");
-                    halt(401, "Please login first to /login");
+            CallingContext ctx = ctxs.get(req.session().id());
+            if (ctx == null) {
+                // check x-api-key header
+                String apiKey = req.headers("x-api-key");
+                if (StringUtils.isNotBlank(apiKey)) {
+                    ctx = Kernel.INSTANCE.loadContext(APP_KEY, apiKey);
+                    if (ctx == null) {
+                        String msg = String.format("Invalid apiKey [%s] for app [%s]", apiKey, APP_KEY);
+                        log.warn(msg);
+                        halt(401, msg);
+                    }
+                    String id = req.session(true).id();
+                    ctxs.put(id, ctx);
+                } else {
+                    log.warn("x-api-key header not found, rejecting...");
+                    halt(401, "Please provide 'x-api-key' header to access this API");
                 }
             }
-        });
-
-        post("/login", (req, res) -> {
-            log.info("Logging in...");
-            CallingContext ctx = null;
-            Map<String, Object> data = JacksonUtil.getMapFromJson(req.body());
-            String apiKey = (String) data.get("apiKey");
-            if (StringUtils.isNotBlank(apiKey)) {
-                String appKey = (String) data.get("appKey");
-                ctx = Kernel.INSTANCE.loadContext(appKey, apiKey);
-                if (ctx == null) {
-                    String msg = String.format("Invalid apiKey [%s] and appKey [%s]", apiKey, appKey);
-                    log.warn(msg);
-                    halt(401, msg);
-                }
-            } else {
-                String username = (String) data.get("username");
-                String password = (String) data.get("password");
-                try {
-                    ctx = Kernel.getLogin().login(username, password, null);
-                } catch (RaptureException re) {
-                    String msg = "Invalid login: " + re.getMessage();
-                    log.warn(msg);
-                    halt(401, msg);
-                }
-            }
-            String id = req.session(true).id();
-            ctxs.put(id, ctx);
-            return id;
         });
 
         post("/doc/:authority", (req, res) -> {
@@ -257,6 +238,133 @@ public class RestServer {
             return Kernel.getDecision().createWorkOrder(getContext(req), getWorkorderUriParam(req), params);
         });
 
+        post("/sstore/:authority", (req, res) -> {
+            log.info(req.body());
+            Map<String, Object> data = JacksonUtil.getMapFromJson(req.body());
+            String authority = req.params(":authority");
+            String config = (String) data.get("config");
+            CallingContext ctx = getContext(req);
+            if (Kernel.getStructured().structuredRepoExists(ctx, authority)) {
+                halt(409, String.format("Repo [%s] already exists", authority));
+            }
+            Kernel.getStructured().createStructuredRepo(ctx, authority, config);
+            return new RaptureURI(authority, Scheme.STRUCTURED).toString();
+        });
+
+        post("/sstore/:authority/:table", (req, res) -> {
+            log.info(req.body());
+            Map<String, Object> data = JacksonUtil.getMapFromJson(req.body());
+            String authority = req.params(":authority");
+            String table = req.params(":table");
+            String tableUri = RaptureURI.builder(Scheme.STRUCTURED, authority).docPath(table).build().toString();
+            CallingContext ctx = getContext(req);
+            if (!Kernel.getStructured().structuredRepoExists(ctx, authority)) {
+                halt(404, String.format("Repo [%s] doesn't exist", authority));
+            } else if (Kernel.getStructured().tableExists(ctx, tableUri)) {
+                halt(409, String.format("Table [%s] already exists", tableUri));
+            }
+            Kernel.getStructured().createTable(ctx, tableUri, (Map) data);
+            return tableUri;
+        });
+
+        put("/sstore/*", (req, res) -> {
+            log.info(req.body());
+            Map<String, Object> data = JacksonUtil.getMapFromJson(req.body());
+            String tableUri = getStructuredUriParam(req);
+            CallingContext ctx = getContext(req);
+            if (!Kernel.getStructured().tableExists(ctx, tableUri)) {
+                halt(404, String.format("Table [%s] doesn't exist", tableUri));
+            }
+            Kernel.getStructured().insertRow(ctx, tableUri, (Map) data);
+            return tableUri;
+        });
+
+        get("/sstore/*", (req, res) -> {
+            List<String> columns = new ArrayList<String>();
+            int limit = 10;
+            String where = "";
+            List<String> order = null;
+            Boolean ascending = false;
+            List<Map<String, Object>> selectRows = new ArrayList<Map<String, Object>>();
+
+            log.info("Params are: " + req.queryString());
+            String tableUri = getStructuredUriParam(req);
+            CallingContext ctx = getContext(req);
+
+            if (req.queryParams("sql") != null) {
+                String schema = new RaptureURI(tableUri, Scheme.STRUCTURED).getAuthority();
+                String updatedRawSql = req.queryParams("sql");
+                log.info("Running raw sql: " + updatedRawSql);
+                selectRows = Kernel.getStructured().selectUsingSql(ctx, schema, updatedRawSql);
+            } else {
+                if (req.queryParams("columns") != null) {
+                    columns.add(req.queryParams("columns"));
+                } else {
+                    columns.add("*"); // return all columns
+                }
+                if (req.queryParams("where") != null) {
+                    where = req.queryParams("where");
+                }
+                if (req.queryParams("order") != null) {
+                    order = new ArrayList<String>();
+                    order.add(req.queryParams("order"));
+                }
+                if (req.queryParams("ascending") != null) {
+                    ascending = Boolean.valueOf(req.queryParams("ascending"));
+                }
+                if (req.queryParams("limit") != null) {
+                    limit = Integer.valueOf(req.queryParams("limit")).intValue();
+                }
+                selectRows = Kernel.getStructured().selectRows(ctx, tableUri, columns, where, order, ascending, limit);
+            }
+
+            return selectRows;
+        });
+
+        delete("/sstore/:authority", (req, res) -> {
+            String repoUri = getStructuredUriParam(req);
+            CallingContext ctx = getContext(req);
+            log.info("deleting repo: " + repoUri);
+            Kernel.getStructured().deleteStructuredRepo(ctx, repoUri);
+            return true;
+        });
+
+        delete("/sstore/:authority/:table/:pkid", (req, res) -> {
+            String pkId = req.params(":pkid");
+            String tableUri = getStructuredUriParam(req, pkId);
+            CallingContext ctx = getContext(req);
+            String pkWhere = pkId + "=" + req.queryParams("pkvalue");
+            log.info("Delete from " + tableUri + " using pk " + pkWhere);
+            Kernel.getStructured().deleteRows(ctx, tableUri, pkWhere);
+            return true;
+        });
+
+        delete("/sstore/:authority/:table", (req, res) -> {
+            String tableUri = getStructuredUriParam(req);
+            CallingContext ctx = getContext(req);
+
+            if (req.body().isEmpty()) { // drop the table if request body is
+                                        // empty.
+                log.info("Dropping table: " + tableUri);
+                Kernel.getStructured().dropTable(ctx, tableUri);
+            } else { // delete rows from table
+                Map<String, Object> data = JacksonUtil.getMapFromJson(req.body());
+                String where = (String) data.get("where");
+                log.info("Delete where clause: " + where + " from " + tableUri);
+                Kernel.getStructured().deleteRows(ctx, tableUri, where);
+            }
+
+            return true;
+        });
+
+    }
+
+    private String getStructuredUriParam(Request req) {
+        return getUriParam(req, "/sstore/");
+    }
+
+    private String getStructuredUriParam(Request req, String postfix) {
+        return getUriSection(req, "/sstore/", postfix);
     }
 
     private String getDocUriParam(Request req) {
@@ -275,6 +383,11 @@ public class RestServer {
         return getUriParam(req, "/workorder/");
     }
 
+    private String getUriSection(Request req, String prefix, String postfix) {
+        String ret = (String) req.pathInfo().subSequence(prefix.length(), req.pathInfo().indexOf(postfix));
+        return ret;
+    }
+
     private String getUriParam(Request req, String prefix) {
         String ret = req.pathInfo().substring(prefix.length());
         int index = ret.indexOf("?");
@@ -282,6 +395,12 @@ public class RestServer {
             ret = ret.substring(0, index);
         }
         return ret;
+    }
+
+    private void setupExceptionHandling() {
+        exception(Exception.class, (e, req, res) -> {
+            log.error(String.format("Exception for request: %s [%s]%n[%s]", req.requestMethod(), req.pathInfo(), req.body()), e);
+        });
     }
 
     private CallingContext getContext(Request req) {

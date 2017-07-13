@@ -26,6 +26,10 @@ package reflex;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+
 import org.antlr.runtime.RecognitionException;
 import org.junit.Test;
 
@@ -59,9 +63,47 @@ public class DateTest extends ResourceBasedTest {
     }
 
     @Test
+    public void testFormatException() throws RecognitionException {
+        String ret = runTestFor("/dateformat.rfx");
+        assertTrue("Test case did not complete successfully", ret.endsWith("true"));
+        String[] lines = ret.split("\n");
+        // EST succeeds but should not - very odd. Java bug.
+        assertEquals(lines[1], "Line: 10, reflex.ReflexException: Unrecognised time zone identifier EDT");
+        assertEquals(lines[2], "Line: 17, reflex.ReflexException: Unrecognised time zone identifier America/New York");
+        assertTrue(lines[3].endsWith("America/New_York"));
+        assertEquals(lines[4], "Line: 31, reflex.ReflexException: Unrecognised time zone identifier GMT+5");
+        assertTrue(lines[5].endsWith("UTC"));
+        assertEquals(lines[6], "java.lang.IllegalArgumentException: Illegal pattern component: U");
+
+    }
+
+    @Test
     public void testComparison() throws RecognitionException {
         String ret = runTestFor("/date/comparison.rfx");
         assertTrue("Test case did not complete successfully", ret.endsWith("true"));
+    }
+
+    @Test
+    public void testTimeComparison() throws RecognitionException {
+        String ret = runTestFor("/date/timecomparison.rfx");
+        assertTrue("Test case did not complete successfully", ret.endsWith("true"));
+    }
+
+    @Test
+    public void yesterday() throws RecognitionException {
+        String[] ret = runTestFor("/date/yesterday.rfx").split("\n");
+
+        ZonedDateTime today = ZonedDateTime.now(ZoneId.of("America/Los_Angeles"));
+        ZonedDateTime yesterday = today.minusDays(1);
+
+        DateTimeFormatter df1 = DateTimeFormatter.ofPattern("yyyyMMdd");
+        DateTimeFormatter df2 = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+        assertEquals(ret[3], "TODAY2 " + today.format(df2));
+        assertEquals(ret[2], "TODAY " + today.format(df1));
+        assertEquals(ret[1], "YESTERDAY2 " + yesterday.format(df2));
+        assertEquals(ret[0], "YESTERDAY " + yesterday.format(df1));
+        assertTrue("Test case did not complete successfully", ret[ret.length - 1].endsWith("true"));
     }
 
     @Test
@@ -70,6 +112,13 @@ public class DateTest extends ResourceBasedTest {
         assertTrue("Test case did not complete successfully", ret.endsWith("true"));
         ret = runTestFor("/time/epoch.rfx");
         assertTrue("Test case did not complete successfully", ret.endsWith("true"));
+    }
+
+    @Test
+    public void testCalendar() throws RecognitionException {
+        String ret = runTestFor("/date/calendar.rfx");
+        System.out.println(ret);
+        assertTrue("Test case did not complete successfully", ret.endsWith("TODAY"));
     }
 
 }

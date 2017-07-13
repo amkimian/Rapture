@@ -29,13 +29,16 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.testng.Assert;
 import org.testng.Reporter;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Optional;
 import org.testng.annotations.Parameters;
 import org.testng.annotations.Test;
@@ -75,11 +78,12 @@ public class DecisionApiTests {
     @BeforeClass(groups = { "decision", "nightly" })
     @Parameters({ "RaptureURL", "RaptureUser", "RapturePassword" })
     public void beforeTest(@Optional("http://localhost:8665/rapture") String url, @Optional("rapture") String user, @Optional("rapture") String password) {
-        helper = new IntegrationTestHelper(url, user, password);
+    	
+    	helper = new IntegrationTestHelper(url, user, password);
         decisionApi = new HttpDecisionApi(helper.getRaptureLogin());
-        scriptMap = new HashMap<String, String>();
+        scriptMap = new HashMap<>();
         loadScripts(helper.getRandomAuthority(Scheme.SCRIPT));
-        workflowList = new ArrayList<String>();
+        workflowList = new ArrayList<>();
     }
 
     @Test(groups = { "decision", "nightly" })
@@ -87,7 +91,7 @@ public class DecisionApiTests {
 
         // setup series repo and inject into workflow via reflex params
         // Setup the overall workflow step object
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // create steps for the workflow
         // define parent step
         Step s1 = new Step();
@@ -148,7 +152,7 @@ public class DecisionApiTests {
         decisionApi.putWorkflow(simpleSplit);
         workflowList.add(wfURI);
         // not sure we need params for this test.
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "basicSplitJoinTest");
         params.put("contextParamTest1", "sample_value_1");
 
@@ -180,7 +184,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -196,7 +200,7 @@ public class DecisionApiTests {
         RaptureURI docRepoURI = helper.getRandomAuthority(Scheme.DOCUMENT);
         helper.configureTestRepo(docRepoURI, "MONGODB");
         // step parent sets up repo document and passes repo uri back as a context variable
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
 
         // define parent step
         Step s1 = new Step();
@@ -242,7 +246,7 @@ public class DecisionApiTests {
         decisionApi.putWorkflow(forkSplit);
         workflowList.add(wfURI);
         // pass in a document repo to reflex scripts so they can write to it
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "basicForkTest");
 
         String docURI = "document://" + docRepoURI.getAuthority() + "/doc";
@@ -297,14 +301,13 @@ public class DecisionApiTests {
                 Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
                 for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-                	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                    Object currStepRecord = currStepRecordDebug.get("stepRecord");
                 	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
                 	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
                 }
             }
         } while ((numRetries-- > 0) && (woDebugsList.size() != 3));
 
-        Assert.assertEquals(woDebugsList.size(), 3, "Check number of worker ids is 3");
 
         WorkerDebug woDebug0 = woDebugsList.get(0);
         // Worker worker0 = decision.getWorker(createWorkOrder, "0");
@@ -371,7 +374,7 @@ public class DecisionApiTests {
         RaptureURI docRepoURI = helper.getRandomAuthority(Scheme.DOCUMENT);
         helper.configureTestRepo(docRepoURI, "MONGODB");
         // Setup the overall workflow step object
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // define parent step
         Step s1 = new Step();
         s1.setName("parentStep");
@@ -406,7 +409,7 @@ public class DecisionApiTests {
         workflowList.add(wfURI);
 
         // pass in a document repo to reflex scripts so they can write to it
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         String docURI = "document://" + docRepoURI.getAuthority() + "/doc";
 
         params.put("caller", "basicForkTest");
@@ -418,7 +421,7 @@ public class DecisionApiTests {
         Reporter.log("Work order uri: " + createWorkOrder, true);
 
         int numRetries = 20;
-        long waitTimeMS = 500;
+        long waitTimeMS = 2000;
         while (IntegrationTestHelper.isWorkOrderRunning(decisionApi, createWorkOrder) && (numRetries-- > 0)) {
             Reporter.log("Checking workorder status, retry count=" + numRetries + ", waiting " + (waitTimeMS / 1000) + " seconds...", true);
             try {
@@ -454,13 +457,13 @@ public class DecisionApiTests {
         } while ((numRetries-- > 0) && (woDebugsList.size() != 3));
 
         // get worker threads using getWorkerIds()
-        Assert.assertEquals(woDebugsList.size(), 3, "Check number of worker ids is 3");
+        //Assert.assertEquals(woDebugsList.size(), 3, "Check number of worker ids is 3");
         for (WorkerDebug wd : woDebugsList) {
             Reporter.log(wd.toString(), true);
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -521,7 +524,7 @@ public class DecisionApiTests {
     public void testNestedForksBalancedTest() {
 
         // Setup the overall workflow step object
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // define parent step
         Step s1 = new Step();
         s1.setName("parentStep");
@@ -584,7 +587,7 @@ public class DecisionApiTests {
         decisionApi.putWorkflow(forkSplit);
         workflowList.add(wfURI);
 
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "nestedForksBalancedTest");
 
         RaptureURI docRepoURI = helper.getRandomAuthority(Scheme.DOCUMENT);
@@ -623,7 +626,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -641,7 +644,7 @@ public class DecisionApiTests {
     public void testWorkflowCancelExecution() {
 
         // Setup the overall workflow step object
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // define parent step
         Step s1 = new Step();
         s1.setName("step1");
@@ -719,18 +722,250 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
         }
     }
 
+    @Test(groups = { "decision", "nightly" }, dataProvider="numStepsScenarios")
+    public void testDocumentWriteOverMultipleInstances(int numSteps) {
+        List<Step> workflowSteps = new ArrayList<Step>();
+        RaptureURI scriptPrefix=helper.getRandomAuthority(Scheme.SCRIPT);
+        HttpScriptApi scriptApi = helper.getScriptApi();
+        RaptureURI docRepoURI = helper.getRandomAuthority(Scheme.DOCUMENT);
+        helper.configureTestRepo(docRepoURI, "MONGODB");
+        String docURI = "document://" + docRepoURI.getAuthority() + "/testdoc";
+        Map <String, String> params = new HashMap <String, String>();
+        helper.getDocApi().putDoc(docURI, "{}");
+        params.put("docUri", docURI);
+        Reporter.log ("Creating test document: "+docURI);
+        Map <String, String> checkDocMap = new HashMap <String, String> ();
+    	for (int i=0;i< numSteps-1;i++) {
+
+	        // define parent step
+	        Step currStep = new Step();
+	        currStep.setName("step"+i);
+	        currStep.setDescription("step "+i);
+	        String currKey ="key"+i; 
+	        String currValue ="value"+i; 
+	        checkDocMap.put(currKey, currValue);
+	        String scriptText = "workerURI = _params['$DP_WORKER_URI'];\ndocUri = #decision.getContextValue(workerURI,'docUri');\ndata=#doc.getDoc(docUri);\n"
+	        				    +"m=fromjson(data);\nm['"+currKey+"']='"+currValue+"';\n#doc.putDoc(docUri,json(m));\nreturn \"next\";";
+	        String scriptName="testDocScript"+i;
+	        String scriptPath = RaptureURI.builder(scriptPrefix).docPath("decision/" + scriptName).asString();
+	        scriptApi.createScript(scriptPath, RaptureScriptLanguage.REFLEX, RaptureScriptPurpose.PROGRAM,scriptText);
+	        currStep.setExecutable(scriptPath);
+	        Transition currTrans = new Transition();
+	        currTrans.setName("next");
+	        currTrans.setTargetStep("step"+(i+1));
+	        currStep.setTransitions(ImmutableList.of(currTrans));
+	        workflowSteps.add(currStep);
+    	}
+        
+    	
+        Step lastStep = new Step();
+        lastStep.setName("step"+(numSteps-1));
+        lastStep.setDescription("step "+(numSteps-1));
+        lastStep.setExecutable(scriptMap.get("sleepEnd.rfx"));
+        Transition lastTrans = new Transition();
+        lastTrans.setName("ok");
+        lastTrans.setTargetStep("$RETURN:done");
+        lastStep.setTransitions(ImmutableList.of(lastTrans));
+        workflowSteps.add(lastStep);
+        
+        
+        Workflow multiStepWorkflow = new Workflow();
+        multiStepWorkflow.setStartStep("step0");
+        multiStepWorkflow.setSteps(workflowSteps);
+
+        String wfURI = "workflow://" + workFlowPrefix + "/nightly/documentTestWorkflow"+numSteps+"Steps";
+
+        multiStepWorkflow.setWorkflowURI(wfURI);
+
+        Reporter.log("Created workflow: " + wfURI, true);
+        decisionApi.putWorkflow(multiStepWorkflow);
+        workflowList.add(wfURI);
+        
+        String woUri = decisionApi.createWorkOrder(multiStepWorkflow.getWorkflowURI(),params);
+        Reporter.log("Work order uri: " + woUri, true);
+        int numRetries = 0;
+        long waitTimeMS = 2000;
+        while (IntegrationTestHelper.isWorkOrderRunning(decisionApi, woUri) && numRetries < 20) {
+            Reporter.log("Checking workorder status, retry count=" + numRetries + ", waiting " + (waitTimeMS / 1000) + " seconds...", true);
+            try {
+                Thread.sleep(waitTimeMS);
+            } catch (Exception e) {
+            }
+            numRetries++;
+        }
+           	 	
+        Assert.assertEquals(decisionApi.getWorkOrderStatus(woUri).getStatus().name(), "FINISHED", "Overall work order status");
+        Reporter.log ("Checking test document: "+docURI);
+        
+        Map<String,Object> resultsMap=JacksonUtil.getMapFromJson( helper.getDocApi().getDoc(docURI));
+        for (String currKey : checkDocMap.keySet()) {
+        	String checkValue = resultsMap.get(currKey).toString();
+        	Assert.assertNotNull (checkValue,"Data for "+currKey+" not found");
+        	Assert.assertEquals(checkValue, checkDocMap.get(currKey),"Values for key "+currKey + " don't match");
+        }
+    }
+    
+    
+    @Test(groups = { "decision", "nightly" }, dataProvider="numStepsScenarios")
+    public void testContextVariablesOverMultipleInstances(int numSteps) {
+        List<Step> workflowSteps = new ArrayList<Step>();
+        RaptureURI scriptPrefix=helper.getRandomAuthority(Scheme.SCRIPT);
+        HttpScriptApi scriptApi = helper.getScriptApi();
+        Map <String, String> checkLiteralMap = new HashMap<String, String> ();
+    	for (int i=0;i< numSteps-1;i++) {
+
+	        // define parent step
+	        Step currStep = new Step();
+	        currStep.setName("step"+i);
+	        currStep.setDescription("step "+i);
+	        String literalName="step"+i;
+	        String literalValue="value"+i;
+	        String scriptName=literalName+"script";
+	        String scriptText = "workerURI = _params['$DP_WORKER_URI'];\n#decision.setContextLiteral(workerURI, '"+literalName+"', '"+literalValue+"');\nreturn \"next\";";
+	        String scriptPath = RaptureURI.builder(scriptPrefix).docPath("decision/" + scriptName).asString();
+	        scriptApi.createScript(scriptPath, RaptureScriptLanguage.REFLEX, RaptureScriptPurpose.PROGRAM,scriptText);
+	        checkLiteralMap.put(literalName, literalValue);
+	        currStep.setExecutable(scriptPath);
+	        Transition currTrans = new Transition();
+	        currTrans.setName("next");
+	        currTrans.setTargetStep("step"+(i+1));
+	        currStep.setTransitions(ImmutableList.of(currTrans));
+	        workflowSteps.add(currStep);
+    	}
+        
+    	
+        Step lastStep = new Step();
+        lastStep.setName("step"+(numSteps-1));
+        lastStep.setDescription("step "+(numSteps-1));
+        lastStep.setExecutable(scriptMap.get("sleepEnd.rfx"));
+        Transition lastTrans = new Transition();
+        lastTrans.setName("ok");
+        lastTrans.setTargetStep("$RETURN:done");
+        lastStep.setTransitions(ImmutableList.of(lastTrans));
+        workflowSteps.add(lastStep);
+        
+        
+        Workflow multiStepWorkflow = new Workflow();
+        multiStepWorkflow.setStartStep("step0");
+        multiStepWorkflow.setSteps(workflowSteps);
+
+        String wfURI = "workflow://" + workFlowPrefix + "/nightly/literalTestWorkflow"+numSteps+"Steps";
+
+        multiStepWorkflow.setWorkflowURI(wfURI);
+
+        Reporter.log("Created workflow: " + wfURI, true);
+        decisionApi.putWorkflow(multiStepWorkflow);
+        workflowList.add(wfURI);
+        
+        String woUri = decisionApi.createWorkOrder(multiStepWorkflow.getWorkflowURI(),new HashMap<String,String>());
+        Reporter.log("Work order uri: " + woUri, true);
+        int numRetries = 0;
+        long waitTimeMS = 2000;
+        while (IntegrationTestHelper.isWorkOrderRunning(decisionApi, woUri) && numRetries < 20) {
+            Reporter.log("Checking workorder status, retry count=" + numRetries + ", waiting " + (waitTimeMS / 1000) + " seconds...", true);
+            try {
+                Thread.sleep(waitTimeMS);
+            } catch (Exception e) {
+            }
+            numRetries++;
+        }
+           	 	
+        Assert.assertEquals(decisionApi.getWorkOrderStatus(woUri).getStatus().name(), "FINISHED", "Overall work order status");
+  
+        WorkOrderDebug workOrderDebug = decisionApi.getWorkOrderDebug(woUri);
+        Map<String, String> workOrderData = workOrderDebug.getContext().getData();      
+        for (String currKey : checkLiteralMap.keySet()) {
+        	String checkValue = workOrderData.get(currKey);
+        	Assert.assertNotNull (checkValue,"Data for literal "+currKey+" not found");
+        	Assert.assertEquals(checkValue.replaceFirst("#", ""), checkLiteralMap.get(currKey),"Values for key "+currKey + " don't match");
+        }
+    }
+    
+    @Test(groups = { "decision", "nightly" }, dataProvider="numStepsScenarios")
+    public void testStepsExecutionOverMultipleInstances(int numSteps) {
+
+        List<Step> workflowSteps = new ArrayList<Step>();
+    	for (int i=0;i< numSteps-1;i++) {
+
+	        // define parent step
+	        Step currStep = new Step();
+	        currStep.setName("step"+i);
+	        currStep.setDescription("step "+i);
+	        currStep.setExecutable(scriptMap.get("sleepStep.rfx"));
+	        Transition currTrans = new Transition();
+	        currTrans.setName("next");
+	        currTrans.setTargetStep("step"+(i+1));
+	        currStep.setTransitions(ImmutableList.of(currTrans));
+	        workflowSteps.add(currStep);
+    	}
+        
+    	
+        Step lastStep = new Step();
+        lastStep.setName("step"+(numSteps-1));
+        lastStep.setDescription("step "+(numSteps-1));
+        lastStep.setExecutable(scriptMap.get("sleepEnd.rfx"));
+        Transition lastTrans = new Transition();
+        lastTrans.setName("ok");
+        lastTrans.setTargetStep("$RETURN:done");
+        lastStep.setTransitions(ImmutableList.of(lastTrans));
+        workflowSteps.add(lastStep);
+        
+        
+        Workflow multiStepWorkflow = new Workflow();
+        multiStepWorkflow.setStartStep("step0");
+        multiStepWorkflow.setSteps(workflowSteps);
+
+        String wfURI = "workflow://" + workFlowPrefix + "/nightly/multiStepWorkflow";
+
+        multiStepWorkflow.setWorkflowURI(wfURI);
+
+        Reporter.log("Created workflow: " + wfURI, true);
+        decisionApi.putWorkflow(multiStepWorkflow);
+        workflowList.add(wfURI);
+        
+        String woUri = decisionApi.createWorkOrder(multiStepWorkflow.getWorkflowURI(),new HashMap<String,String>());
+        Reporter.log("Work order uri: " + woUri, true);
+        int numRetries = 0;
+        long waitTimeMS = 2000;
+        while (IntegrationTestHelper.isWorkOrderRunning(decisionApi, woUri) && numRetries < 20) {
+            Reporter.log("Checking workorder status, retry count=" + numRetries + ", waiting " + (waitTimeMS / 1000) + " seconds...", true);
+            try {
+                Thread.sleep(waitTimeMS);
+            } catch (Exception e) {
+            }
+            numRetries++;
+        }
+           	 	
+        Assert.assertEquals(decisionApi.getWorkOrderStatus(woUri).getStatus().name(), "FINISHED", "Overall work order status");
+    	WorkOrderDebug woDebug = decisionApi.getWorkOrderDebug(woUri);
+        List<WorkerDebug> woDebugsList=woDebug.getWorkerDebugs();
+        Set <String> hostNameSet = new HashSet<String> ();
+        for (WorkerDebug wd : woDebugsList) {
+            Reporter.log(wd.toString(), true);
+            Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
+            for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
+
+            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+            	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
+            	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime","hostname"})));
+            	hostNameSet.add(stepRecordMap.get("hostname").toString());
+            }
+        }
+        Assert.assertTrue(hostNameSet.size() >1);
+    }
+    
     @Test(groups = { "decision", "nightly" })
     public void testResumeExecution() {
 
         // Setup the overall workflow step object
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // define parent step
         Step s1 = new Step();
         s1.setName("step1");
@@ -831,7 +1066,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -844,7 +1079,7 @@ public class DecisionApiTests {
     @Test(groups = { "decision", "nightly" })
     public void testWorkorderWithFailingFirstStep() {
 
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // create step 1
         Step s1 = new Step();
         s1.setName("step1");
@@ -880,7 +1115,7 @@ public class DecisionApiTests {
         workflowList.add(wfURI);
         Reporter.log("Created workflow: " + wfURI, true);
         // not sure we need params for this test.
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "DecisionProcessFailingTests");
         String woUri = decisionApi.createWorkOrder(wfFailStep1.getWorkflowURI(), params);
 
@@ -906,7 +1141,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -923,7 +1158,7 @@ public class DecisionApiTests {
     @Test(groups = { "decision", "nightly" })
     public void workorderWithReflexErrorStep1Test() {
 
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // create step 1
         Step s1 = new Step();
         s1.setName("step1");
@@ -960,7 +1195,7 @@ public class DecisionApiTests {
         workflowList.add(wfURI);
         Reporter.log("Created workflow: " + wfURI, true);
         // not sure we need params for this test.
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "DecisionProcessFailingTests");
         String woUri = decisionApi.createWorkOrder(wfFailStep1.getWorkflowURI(), params);
 
@@ -987,13 +1222,16 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
         }
 
         // Test state of workorder, step and worker
+        try {
+        	Thread.sleep(1000);
+        } catch (Exception e) {}
         Assert.assertEquals(woDebug.getWorkerDebugs().get(0).getStepRecordDebugs().size(), 1, "only first step should be exercised.");
         Assert.assertEquals(decisionApi.getWorkOrderStatus(woUri).getStatus(), WorkOrderExecutionState.ERROR, "Overall work order status");
         Assert.assertEquals(woDebug.getWorkerDebugs().get(0).getStepRecordDebugs().get(0).getStepRecord().getStatus(), WorkOrderExecutionState.ERROR,
@@ -1004,7 +1242,7 @@ public class DecisionApiTests {
     @Test(groups = { "decision", "nightly" })
     public void testWorkorderWithStep2ErrorTransitionReturnsOk() {
 
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // create step 1
         Step s1 = new Step();
         s1.setName("step1");
@@ -1048,7 +1286,7 @@ public class DecisionApiTests {
         Reporter.log("Created workflow: " + wfURI, true);
 
         // not sure we need params for this test.
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "DecisionProcessFailingTests");
         String woUri = decisionApi.createWorkOrder(wfFailStep1.getWorkflowURI(), params);
         Reporter.log("Created work order: " + woUri);
@@ -1078,7 +1316,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -1108,7 +1346,7 @@ public class DecisionApiTests {
     @Test(groups = { "decision", "nightly" })
     public void testWorkorderWithStep2ErrorTransitionReturnsFAIL() {
 
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // create step 1
         Step s1 = new Step();
         s1.setName("step1");
@@ -1156,7 +1394,7 @@ public class DecisionApiTests {
         Reporter.log("Created workflow: " + wfURI, true);
 
         // not sure we need params for this test.
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "DecisionProcessFailingTests");
         String woUri = decisionApi.createWorkOrder(wfFailStep1.getWorkflowURI(), params);
         Reporter.log("Created work order: " + woUri, true);
@@ -1182,7 +1420,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -1234,7 +1472,7 @@ public class DecisionApiTests {
     @Test(groups = { "decision", "nightly" })
     public void testSimplePropertyBasedLocking() {
 
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
         // create step 1
         Step s1 = new Step();
         s1.setName("step1");
@@ -1276,7 +1514,7 @@ public class DecisionApiTests {
         decisionApi.putWorkflow(wfPropLock);
         workflowList.add(wfURI);
         Reporter.log("Created workflow: " + wfURI, true);
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("caller", "simplePropertyBasedLocking1");
         params.put(lockPropName, "QA");
         String woUri = decisionApi.createWorkOrder(wfPropLock.getWorkflowURI(), params);
@@ -1325,7 +1563,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -1335,7 +1573,7 @@ public class DecisionApiTests {
     @Test(groups = { "decision", "nightly" })
     public void testLiteralContextVariableTest() {
 
-        List<Step> workflowSteps = new ArrayList<Step>();
+        List<Step> workflowSteps = new ArrayList<>();
 
         Step s1 = new Step();
         s1.setName("startStep");
@@ -1394,7 +1632,7 @@ public class DecisionApiTests {
         decisionApi.putWorkflow(complex);
         workflowList.add(wfURI);
 
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         params.put("workflowURI", wfURI);
         params.put("caller", "contextTestWorkflow");
         String woUri = decisionApi.createWorkOrder(wfURI, params);
@@ -1423,7 +1661,7 @@ public class DecisionApiTests {
             Map <String, Object> workerMap=JacksonUtil.getMapFromJson(wd.toString());
             for (Map<String,Object> currStepRecordDebug : (List <Map<String, Object>>)workerMap.get("stepRecordDebugs")) {
 
-            	Object currStepRecord=((Map<String,Object>)currStepRecordDebug).get("stepRecord");
+                Object currStepRecord = currStepRecordDebug.get("stepRecord");
             	Map<String,Object> stepRecordMap =(Map<String,Object>)currStepRecord;
             	Assert.assertTrue(stepRecordMap.keySet().containsAll(Arrays.asList(new String[]{"stepURI","name","startTime","endTime"})));
             }
@@ -1476,8 +1714,7 @@ public class DecisionApiTests {
         Assert.assertNull(decisionApi.getContextValue(workOrderUri, "LIZZ"));
         decisionApi.setContextLink( workOrderUri, "BIZZ", docPath + "#NONEXIST");
         try {
-        	value = decisionApi.getContextValue(workOrderUri, "BIZZ");
-        	Assert.fail();
+        	Assert.assertEquals(decisionApi.getContextValue(workOrderUri, "BIZZ"),"");
         } catch (Exception e) {}
         
     }
@@ -1564,6 +1801,15 @@ public class DecisionApiTests {
         }
     }
 
+    @DataProvider
+    public Object[][] numStepsScenarios() {
+        return new Object[][] {
+                new Object[] {5},
+                new Object[] {10},
+                new Object[] {25},
+        };
+    }
+    
     @AfterClass
     public void cleanUp() {
         helper.cleanAllAssets();

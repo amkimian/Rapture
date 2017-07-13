@@ -83,4 +83,28 @@ public class ExceptionToString implements Formattable{
         }
         return sw.toString();
     }
+
+    public static final String summary(Throwable toss) {
+        StringBuilder sb = new StringBuilder();
+        for (Throwable t = toss; t != null;) {
+            String clas = t.getClass().toString();
+            if (clas.startsWith("class ")) clas = clas.substring(6);
+            sb.append(clas).append(": ");
+            sb.append(t.getMessage()).append("\n");
+            t = t.getCause();
+            if (t != null) sb.append("Caused by: ");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Throw away any nested exceptions and get to the low level cause. Might not be ideal in every case
+     * 
+     * @param e
+     * @return
+     */
+    public static Throwable getRootCause(Throwable e) {
+        Throwable t = org.apache.commons.lang3.exception.ExceptionUtils.getRootCause(e);
+        return (t == null) ? e : t;
+    }
 }

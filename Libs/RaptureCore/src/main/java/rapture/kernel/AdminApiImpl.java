@@ -35,7 +35,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
 
+import javax.mail.MessagingException;
+
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.joda.time.DateTime;
 
@@ -87,7 +90,7 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
     private static final String TEMPLATE = "TEMPLATE"; //$NON-NLS-1$
     private static Logger log = Logger.getLogger(AdminApiImpl.class);
 
-    private Map<String, String> templates = new HashMap<String, String>();
+    private Map<String, String> templates = new HashMap<>();
     Messages adminMessageCatalog;
 
     public AdminApiImpl(Kernel raptureKernel) {
@@ -134,6 +137,11 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
 
     @Override
     public void addUser(CallingContext context, String userName, String description, String hashPassword, String email) {
+        addNamedUser(context, userName, description, hashPassword, email, "");
+    }
+
+    @Override
+    public void addNamedUser(CallingContext context, String userName, String description, String hashPassword, String email, String realName) {
         checkParameter("User", userName); //$NON-NLS-1$
         // Does the user already exist?
         RaptureUser usr = getUser(context, userName);
@@ -143,6 +151,7 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
             Kernel.getAudit().writeAuditEntry(context, RaptureConstants.DEFAULT_AUDIT_URI, "admin", 2, "New user " + userName + " added by " + iAm);
             usr = new RaptureUser();
             usr.setUsername(userName);
+            usr.setUserId(realName);
             usr.setDescription(description);
             usr.setHashPassword(hashPassword);
             usr.setEmailAddress(email);
@@ -264,7 +273,7 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
         // Get the sessions for this user. Visit and test the content before
         // adding it
         checkParameter("User", user); //$NON-NLS-1$
-        final List<CallingContext> ret = new ArrayList<CallingContext>();
+        final List<CallingContext> ret = new ArrayList<>();
         getEphemeralRepo().visitAll("session", //$NON-NLS-1$
                 null, new RepoVisitor() {
 
@@ -290,7 +299,7 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
 
     @Override
     public Map<String, String> getSystemProperties(CallingContext context, List<String> keys) {
-        Map<String, String> ret = new TreeMap<String, String>();
+        Map<String, String> ret = new TreeMap<>();
         if (keys.isEmpty()) {
             ret.putAll(System.getenv());
             Properties p = System.getProperties();
@@ -379,11 +388,11 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
         checkParameter("User", userName);
         checkParameter("Token", token);
         RaptureUser user = getUser(context, userName);
-        boolean match = user.getVerified();
-
         if (user == null) {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, adminMessageCatalog.getMessage("NoExistUser", userName)); //$NON-NLS-1$
         }
+
+        boolean match = user.getVerified();
         if (!match) {
             match = token.equals(user.getRegistrationToken());
             if (match) {
@@ -393,6 +402,27 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
             }
         }
         return match;
+    }
+
+    @Override
+    public Boolean verifyPasswordResetToken(CallingContext context, String userName, String token) {
+        checkParameter("User", userName);
+        checkParameter("Token", token);
+        RaptureUser user = getUser(context, userName);
+
+        if (user == null) {
+            log.info("User " + userName + " does not exist");
+            return false;
+        }
+        if (StringUtils.isBlank(user.getPasswordResetToken()) || !token.equals(user.getPasswordResetToken())) {
+            log.info("Invalid password reset token");
+            return false;
+        }
+        if (user.getTokenExpirationTime() <= System.currentTimeMillis()) {
+            log.info("Password reset token has expired");
+            return false;
+        }
+        return true;
     }
 
     private String generateSecureToken() {
@@ -440,9 +470,20 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
         checkParameter("User", userName); //$NON-NLS-1$
         RaptureUser user = getUser(context, userName);
         if (user != null) {
-            templateValues.put("user", user);
-            Mailer.email(context, emailTemplate, templateValues);
+            // Supplied map should not get modified.
+            Map<String, Object> values = new HashMap<>();
+            values.putAll(templateValues);
+            values.put("user", user);
+            try {
+                Mailer.email(context, emailTemplate, values);
+            } catch (MessagingException e) {
+                MessageFormat err = adminMessageCatalog.getMessage("CannotEmailUser", new String[] { userName, user.getEmailAddress(), e.getMessage() });
+                log.warn(err.format(), e);
+                throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, err);
+            }
         } else {
+            MessageFormat err = adminMessageCatalog.getMessage("NoExistUser", userName);
+            log.warn(err.format());
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, adminMessageCatalog.getMessage("NoExistUser", userName)); //$NON-NLS-1$ }
         }
     }
@@ -511,7 +552,7 @@ public class AdminApiImpl extends KernelBase implements AdminApi {
         if ((values == null) || values.isEmpty()) return;
 
         Map<String, String> metadata = context.getMetadata();
-        if (metadata == null) metadata = new HashMap<String, String>();
+        if (metadata == null) metadata = new HashMap<>();
         for (String key : values.keySet()) {
             if (!overwrite && metadata.containsKey(key)) {
                 throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, key + " exists and overwrite was disallowed");

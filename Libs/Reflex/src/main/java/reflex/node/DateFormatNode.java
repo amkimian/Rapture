@@ -23,13 +23,16 @@
  */
 package reflex.node;
 
+
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 
 import reflex.IReflexHandler;
+import reflex.ReflexException;
 import reflex.Scope;
 import reflex.debug.IReflexDebugger;
+import reflex.value.ReflexTimeValue;
 import reflex.value.ReflexValue;
 
 /**
@@ -59,7 +62,15 @@ public class DateFormatNode extends BaseNode {
         // could be null
         ReflexValue dateFormatValue = null;
         ReflexValue retVal = null;
-        DateTimeZone zone = (timezone == null) ? null : DateTimeZone.forID(timezone.evaluate(debugger, scope).asString());
+        DateTimeZone zone = null;
+        if (timezone != null) {
+            ReflexValue rv = timezone.evaluate(debugger, scope);
+            try {
+                if (!rv.isNull()) zone = DateTimeZone.forID(rv.asString());
+            } catch (IllegalArgumentException e) {
+                throw new ReflexException(lineNumber, "Unrecognised time zone identifier " + rv.asString());
+            }
+        }
 
         DateTimeFormatter dtf = null;
         if (format != null) {
@@ -72,6 +83,9 @@ public class DateFormatNode extends BaseNode {
             retVal = new ReflexValue(dateValue.asDate().toString(dtf, zone));
         } else if (dateValue.isTime()) {
             retVal = new ReflexValue(dateValue.asTime().toString(dtf, zone));
+        } else if (dateValue.isNumber()) {
+            ReflexTimeValue rdv = new ReflexTimeValue(dateValue.asLong(), zone);
+            retVal = new ReflexValue(rdv.toString(dtf, zone));
         } else {
             throwError("Illegal argument ", dateNode, format, dateValue, dateFormatValue);
         }

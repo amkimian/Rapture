@@ -39,15 +39,10 @@ public class PrintlnNode extends PrintNode {
     @Override
     public ReflexValue evaluate(IReflexDebugger debugger, Scope scope) {
         debugger.stepStart(this, scope);
-        if (expression != null) {
-            ReflexValue value = expression.evaluate(debugger, scope);
-            handler.getOutputHandler().printOutput(value.toString());
-        } else {
-            handler.getOutputHandler().printOutput("");
-        }
-        handler.getOutputHandler().printOutput("\n");
-        debugger.stepEnd(this, new ReflexVoidValue(lineNumber), scope);
-        return new ReflexVoidValue();
+        doPrint(debugger, scope, "\n");
+        ReflexVoidValue rvv = new ReflexVoidValue(lineNumber);
+        debugger.stepEnd(this, rvv, scope);
+        return rvv;
     }
 
     @Override

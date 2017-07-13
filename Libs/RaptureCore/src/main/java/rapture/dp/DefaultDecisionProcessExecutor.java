@@ -93,6 +93,7 @@ import rapture.kernel.ContextFactory;
 import rapture.kernel.DocApiImpl;
 import rapture.kernel.Kernel;
 import rapture.kernel.LockApiImpl;
+import rapture.kernel.Pipeline2ApiImpl;
 import rapture.kernel.dp.ExecutionContextUtil;
 import rapture.kernel.dp.StepRecordUtil;
 import rapture.kernel.dp.WorkOrderStatusUtil;
@@ -175,7 +176,12 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
         task.addMimeObject(worker);
         task.setContentType(MimeDecisionProcessAdvance.getMimeType());
         task.initTask();
-        Kernel.getPipeline().publishMessageToCategory(ContextFactory.getKernelUser(), task);
+        if (Pipeline2ApiImpl.usePipeline2) { 
+            Kernel.getPipeline2().broadcastMessage(ContextFactory.getKernelUser(), category, JacksonUtil.jsonFromObject(task));
+//            Kernel.getPipeline2().publishTask(ContextFactory.getKernelUser(), category, JacksonUtil.jsonFromObject(task), 0L, null);
+        } else {
+            Kernel.getPipeline().publishMessageToCategory(ContextFactory.getKernelUser(), task);
+        }
     }
 
     private void publishForkChildren(Worker worker, Step step, Workflow flow) {
@@ -329,12 +335,16 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
     @Override
     public void executeStep(Worker worker) {
         WorkOrder workOrder = WorkOrderFactory.loadWorkOrder(worker);
-
+        if (workOrder == null) {
+            log.warn("No work order for worker " + worker.toString());
+            return;
+        }
         List<String> stack = worker.getStack();
         worker.setStatus(WorkerExecutionState.RUNNING);
         saveWorker(worker);
 
-        String workerURI = createWorkerURI(worker.getWorkOrderURI(), worker.getId()).toString();
+        String workOrderURI = worker.getWorkOrderURI();
+        String workerURI = createWorkerURI(workOrderURI, worker.getId()).toString();
 
         workOrder.setStatus(WorkOrderStatusUtil.computeStatus(workOrder, false));
         WorkOrderStorage.add(new RaptureURI(workOrder.getWorkOrderURI(), Scheme.WORKORDER), workOrder, ContextFactory.getKernelUser().getUser(),
@@ -701,9 +711,15 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
                 String nextStepURI = changeStepUri(stepURI, targetName);
                 log.trace("Target transition: " + nextStepURI);
                 stack.add(0, nextStepURI);
-                String stepCategory = Kernel.getDecision().getStepCategory(ContextFactory.getKernelUser(), nextStepURI);
-                saveWorker(worker);
-                publishStep(worker, stepCategory);
+                try {
+                    String stepCategory = Kernel.getDecision().getStepCategory(ContextFactory.getKernelUser(), nextStepURI);
+                    saveWorker(worker);
+                    publishStep(worker, stepCategory);
+                } catch (RaptureException e) {
+                    // For debugging it helps if we log the step name. getStepCategory doesn't know what the name is.
+                    log.error("Error in step " + step.getName() + ": " + e.getMessage());
+                    throw e;
+                }
                 return;
             }
         }
@@ -931,7 +947,8 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
                 if (workerAuditUri != null) {
                     rScript.setAuditLogUri(workerAuditUri);
                 }
-                Object result = rScript.runProgram(ctx, null, script, createScriptValsMap(worker, workerURI, stepRecord), limit);
+                String auditLogUri = InvocableUtils.getWorkflowAuditLog(InvocableUtils.getAppStatusName(worker), worker.getWorkOrderURI(), step.getName());
+                Object result = rScript.runProgram(ctx, null, script, createScriptValsMap(worker, workerURI, stepRecord, auditLogUri), limit);
                 return (result == null) ? "" : result.toString();
             case WORKFLOW:
                 Workflow workflow = WorkflowStorage.readByAddress(executableUri);
@@ -965,6 +982,7 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
                 if (limit > 0) {
                     return abstractInvocable.abortableInvoke(ctx, limit);
                 } else {
+                    abstractInvocable.preInvoke(ctx);
                     return abstractInvocable.invoke(ctx);
                 }
             default:
@@ -974,7 +992,7 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
         }
     }
 
-    private Map<String, Object> createScriptValsMap(Worker worker, String workerUriString, StepRecord stepRecord) {
+    private Map<String, Object> createScriptValsMap(Worker worker, String workerUriString, StepRecord stepRecord, String auditLogUri) {
         Map<String, Object> extraVals = Maps.newHashMap();
 
         String workOrderUri = worker.getWorkOrderURI();
@@ -983,6 +1001,7 @@ public class DefaultDecisionProcessExecutor implements DecisionProcessExecutor {
         RaptureURI workerURI = new RaptureURI(workerUriString);
         extraVals.put(ContextVariables.DP_WORKER_URI, workerURI.toString());
         extraVals.put(ContextVariables.DP_WORKER_ID, workerURI.getElement());
+        extraVals.put(ContextVariables.DP_AUDITLOG_URI, auditLogUri);
 
         extraVals.put(ContextVariables.DP_STEP_NAME, stepRecord.getName());
         extraVals.put(ContextVariables.DP_STEP_START_TIME, stepRecord.getStartTime());

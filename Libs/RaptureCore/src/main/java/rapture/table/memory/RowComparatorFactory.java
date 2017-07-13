@@ -23,14 +23,14 @@
  */
 package rapture.table.memory;
 
-import rapture.dsl.iqry.OrderDirection;
-
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
+
+import rapture.dsl.iqry.OrderDirection;
 
 /**
  * @author bardhi
@@ -39,7 +39,7 @@ import org.apache.log4j.Logger;
 public class RowComparatorFactory {
     private static final Logger log = Logger.getLogger(RowComparatorFactory.class);
 
-    static Comparator<List<Object>> createComparator(final List<String> fieldList, List<String> columnNames, OrderDirection direction) {
+    public static Comparator<List<Object>> createComparator(final List<String> fieldList, List<String> columnNames, OrderDirection direction) {
         Map<String, Integer> fieldToIndex = new HashMap<>();
         for (int i = 0; i < columnNames.size(); i++) {
             String columnName = columnNames.get(i);
@@ -65,9 +65,10 @@ public class RowComparatorFactory {
                     } else {
                         Object v1 = o1.get(index);
                         Object v2 = o2.get(index);
-                        
                         if (v1 instanceof Number && v2 instanceof Number) {
-                            retVal = ((Number) v1).intValue() - ((Number)v2).intValue();
+                            Double d1 = ((Number) v1).doubleValue();
+                            Double d2 = ((Number) v2).doubleValue();
+                            retVal = d1.compareTo(d2);
                         } else if (v1 instanceof Comparable) {
                             try {
                                 retVal = ((Comparable) v1).compareTo(v2);

@@ -25,51 +25,55 @@ package rapture.dp;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import org.apache.log4j.Logger;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.junit.Before;
 import org.junit.Test;
 
 import rapture.common.CallingContext;
+import rapture.common.JobType;
+import rapture.common.RaptureJob;
+import rapture.common.RaptureJobExec;
 import rapture.common.RaptureScriptLanguage;
 import rapture.common.RaptureScriptPurpose;
+import rapture.common.WorkOrderExecutionState;
 import rapture.common.dp.Step;
+import rapture.common.dp.WorkOrder;
 import rapture.common.dp.Workflow;
+import rapture.common.impl.jackson.JacksonUtil;
 import rapture.kernel.ContextFactory;
 import rapture.kernel.Kernel;
 
 public class WorkOrderTest {
 
+    private static final Logger log = Logger.getLogger(WorkOrderTest.class);
+
     private CallingContext ctx = ContextFactory.getKernelUser();
 
     private static final String REPO_URI = "//testRepoUrixyz";
 
+    private static final String workflowUri = "workflow://testthisworkflow/wf";
+    private static final String workflowUri2 = "workflow://anotherworkflow/xx";
+
     @Before
     public void setup() {
+        Kernel.getKernel().restart();
         Kernel.initBootstrap();
-    }
-
-    @Test
-    public void testGetWorkOrderByWorkflowOnEmptySystem() {
-        List<String> ret = Kernel.getDecision().getWorkOrdersByWorkflow(ctx, System.currentTimeMillis(), "//doesntexist/soidontcare/coolstorybro");
-        assertNotNull(ret);
-        assertTrue(ret.isEmpty());
-    }
-
-    @Test
-    public void testGetWorkOrdersByWorkflow() {
         String scr1 = "script1";
         Kernel.getScript().deleteScript(ctx, REPO_URI + "/" + scr1);
         Kernel.getScript().createScript(ctx, REPO_URI + "/" + scr1, RaptureScriptLanguage.REFLEX, RaptureScriptPurpose.PROGRAM,
                 "println(\"Hello there\"); return \"ok\";");
-        String workflowUri = "workflow://testthisworkflow/wf";
-        String workflowUri2 = "workflow://anotherworkflow/xx";
-        List<Step> steps = new ArrayList<Step>();
+
+        List<Step> steps = new ArrayList<>();
         Step s1 = new Step();
         s1.setName("start");
         s1.setExecutable("script://" + REPO_URI + "/" + scr1);
@@ -89,7 +93,17 @@ public class WorkOrderTest {
         workflow2.setStartStep("start");
 
         Kernel.getDecision().putWorkflow(ctx, workflow2);
+    }
 
+    @Test
+    public void testGetWorkOrderByWorkflowOnEmptySystem() {
+        List<String> ret = Kernel.getDecision().getWorkOrdersByWorkflow(ctx, System.currentTimeMillis(), "//doesntexist/soidontcare/coolstorybro");
+        assertNotNull(ret);
+        assertTrue(ret.isEmpty());
+    }
+
+    @Test
+    public void testGetWorkOrdersByWorkflow() {
         final String workOrderUri = Kernel.getDecision().createWorkOrder(ctx, workflowUri, null);
         Kernel.getDecision().createWorkOrder(ctx, workflowUri2, null);
 
@@ -118,6 +132,50 @@ public class WorkOrderTest {
         ret = Kernel.getDecision().getWorkOrdersByWorkflow(ctx, null, workflowUri);
         assertEquals(1, ret.size());
         assertEquals(workOrderUri, ret.get(0));
+
+    }
+
+    @Test
+    public void testGetWorkOrderStatusesByWorkflow() {
+        final String workOrderUri = Kernel.getDecision().createWorkOrder(ctx, workflowUri, null);
+        Map<String, List<String>> statuses = Kernel.getDecision().getWorkOrderStatusesByWorkflow(ctx, System.currentTimeMillis(), workflowUri);
+        assertEquals(1, statuses.size());
+        assertEquals(WorkOrderExecutionState.NEW.toString(), statuses.entrySet().iterator().next().getKey());
+        assertEquals(workOrderUri, statuses.entrySet().iterator().next().getValue().get(0));
+    }
+
+    @Test
+    public void testGetWorkOrderByJobExec() {
+        final String jobUri = "job://workorderjobz/job1";
+        RaptureJobExec r = new RaptureJobExec();
+        r.setJobType(JobType.WORKFLOW);
+        r.setJobURI(jobUri);
+        r.setExecTime(System.currentTimeMillis());
+        assertNull(Kernel.getDecision().getWorkOrderByJobExec(ctx, r));
+        RaptureJob job = Kernel.getSchedule().createWorkflowJob(ctx, jobUri, null, workflowUri, "* * * * *", "America/New_York", new HashMap<>(), false, 1,
+                null);
+        WorkOrder ret = Kernel.getDecision().getWorkOrderByJobExec(ctx, r);
+        assertNull("Work order should be null", ret);
+        String returnedWorkOrderUri = Kernel.getSchedule().runJobNow(ctx, jobUri, null);
+        assertNotNull("Work order URI should not be null", returnedWorkOrderUri);
+        List<RaptureJobExec> rje = Kernel.getSchedule().getJobExecs(ctx, jobUri, 0, 1, false);
+        log.info("jobexec is: " + JacksonUtil.jsonFromObject(rje.get(0)));
+        ret = Kernel.getDecision().getWorkOrderByJobExec(ctx, rje.get(0));
+        assertNotNull("Work order should not be null", ret);
+        assertEquals(workflowUri, ret.getWorkflowURI());
+    }
+
+    @Test
+    public void testGetJobExecsAndWorkOrdersByDay() {
+        final String jobUri = "job://workorderjobz/job2";
+        Kernel.getSchedule().createWorkflowJob(ctx, jobUri, null, workflowUri, "* * * * *", "America/New_York", new HashMap<>(), false, 1, null);
+        String returnedWorkOrderUri = Kernel.getSchedule().runJobNow(ctx, jobUri, null);
+        assertNotNull(returnedWorkOrderUri);
+        Map<RaptureJobExec, WorkOrder> ret = Kernel.getDecision().getJobExecsAndWorkOrdersByDay(ctx, System.currentTimeMillis());
+        assertEquals(1, ret.size());
+        Map.Entry<RaptureJobExec, WorkOrder> entry = ret.entrySet().iterator().next();
+        assertEquals(jobUri, entry.getKey().getJobURI());
+        assertEquals(workflowUri, entry.getValue().getWorkflowURI());
     }
 
 }

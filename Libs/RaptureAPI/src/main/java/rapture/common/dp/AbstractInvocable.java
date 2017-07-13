@@ -38,12 +38,22 @@ public abstract class AbstractInvocable<T> implements Steps {
     public static final String TIMEOUT = "__reserved__TIMEOUT";
     private String workerUri;
     private Long stepStartTime;
-    private String stepName;
     private ClassLoader classLoader;
 
+    private String stepName;
+    private String errName;
+
     public AbstractInvocable(String workerUri, String stepName) {
+        // TODO Disallow null or empty string, but that breaks several test cases
         this.workerUri = workerUri;
         this.stepName = stepName;
+        errName = stepName + "Error";
+    }
+
+    public void preInvoke(CallingContext ctx) {
+        // Intended to be overrideable to allow any setup that requires CallingContext
+        // and therefore cannot be done in the constructor.
+        // Could make this abstract, but there are about 20 implementing classes.
     }
 
     public Long getStepStartTime() {
@@ -58,8 +68,13 @@ public abstract class AbstractInvocable<T> implements Steps {
         return stepName;
     }
 
+    public String getErrName() {
+        return errName;
+    }
+
     public void setStepName(String stepName) {
         this.stepName = stepName;
+        this.errName = stepName + "Error";
     }
 
     public String getWorkerURI() {
@@ -76,7 +91,7 @@ public abstract class AbstractInvocable<T> implements Steps {
     public String abortableInvoke(final CallingContext ctx, int timeoutSeconds) {
         final T handle = prepareInterruptableInvocation(ctx);
 
-        FutureTask<String> task = new FutureTask<String>(new Callable<String>() {
+        FutureTask<String> task = new FutureTask<>(new Callable<String>() {
             @Override
             public String call() throws Exception {
                 return invokeHook(ctx, handle);
@@ -121,15 +136,15 @@ public abstract class AbstractInvocable<T> implements Steps {
     }
 
     // Can be overridden
-    protected String getNextTransition() {
+    public static String getNextTransition() {
         return Steps.NEXT;
     }
 
-    protected String getErrorTransition() {
+    public static String getErrorTransition() {
         return Steps.ERROR;
     }
 
-    protected String getFailTransition() {
+    public static String getFailTransition() {
         return Steps.QUIT;
     }
 

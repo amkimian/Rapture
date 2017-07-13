@@ -24,11 +24,14 @@
 package rapture.kernel.plugin;
 
 import rapture.common.CallingContext;
+import rapture.common.RaptureURI;
+import rapture.common.Scheme;
 import rapture.kernel.Kernel;
 
 public class EntitlementEncoder extends ReflectionEncoder {
+
     @Override
     public Object getReflectionObject(CallingContext ctx, String uri) {
-        return Kernel.getEntitlement().getEntitlementByAddress(ctx, uri);
+        return Kernel.getEntitlement().getEntitlement(ctx, new RaptureURI(uri, Scheme.ENTITLEMENT).getShortPath());
     }
 }

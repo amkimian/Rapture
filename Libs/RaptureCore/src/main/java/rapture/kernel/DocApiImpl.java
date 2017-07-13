@@ -112,6 +112,13 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, apiMessageCatalog.getMessage("NoDocPath", docRepoUri)); //$NON-NLS-1$
         }
         if (docRepoExists(context, docRepoUri)) {
+            DocumentRepoConfig existingConfig = getDocRepoConfig(context, docRepoUri);
+            if (config.replaceAll(" ", "").equals(existingConfig.getDocumentRepo().getConfig().replaceAll(" ", ""))) {
+                log.info(apiMessageCatalog.getMessage("Exists", internalUri.toShortString()));
+                return;
+            }
+            log.error(apiMessageCatalog.getMessage("Exists", internalUri.toShortString()));
+            log.error("Existing config " + existingConfig.getDocumentRepo().getConfig() + " does not match " + config);
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, apiMessageCatalog.getMessage("Exists", internalUri.toShortString())); //$NON-NLS-1$
         }
 
@@ -193,6 +200,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
     @Override
     public void deleteDocRepo(CallingContext context, String docRepoUri) {
         RaptureURI internalUri = new RaptureURI(docRepoUri, Scheme.DOCUMENT);
+
         if (internalUri.hasDocPath()) {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, apiMessageCatalog.getMessage("NoDocPath", docRepoUri)); //$NON-NLS-1$
         }
@@ -224,9 +232,14 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
         // So mark the config as having been deleted.
         // DocumentRepoConfigStorage.deleteByAddress(internalUri,
         // context.getUser(), "Drop document repo");
+
         DocumentRepoConfig drc = DocumentRepoConfigStorage.readByAddress(internalUri);
-        drc.setDeleted(true);
-        DocumentRepoConfigStorage.add(internalUri, drc, context.getUser(), "Mark config as deleted");
+        if (drc == null) {
+            drc = new DocumentRepoConfig();
+            drc.setAuthority(internalUri.getAuthority());
+        }
+            drc.setDeleted(true);
+            DocumentRepoConfigStorage.add(internalUri, drc, context.getUser(), "Mark config as deleted");
         log.info("Config for " + internalUri.toString() + " marked as deleted ");
         removeRepoFromCache(internalUri.getAuthority());
 
@@ -277,7 +290,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
      * Note: We no longer remove duplicates or modify the docUris list
      */
     public List<Boolean> docsExist(CallingContext context, List<String> docUris) {
-        List<Boolean> retVal = new ArrayList<Boolean>(docUris.size());
+        List<Boolean> retVal = new ArrayList<>(docUris.size());
         for (String uri : docUris) {
             try {
                 GetDocPayload requestObj = new GetDocPayload();
@@ -305,7 +318,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
         } else if (docUris.isEmpty()) {
             return new HashMap<>();
         }
-        Map<String, String> ret = new LinkedHashMap<String, String>();
+        Map<String, String> ret = new LinkedHashMap<>();
         Map<String, String> result = getDocsInternal(context, docUris);
 
         for (String uri : docUris) {
@@ -364,12 +377,12 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
     @Override
     public List<DocumentWithMeta> getDocAndMetas(CallingContext context, List<String> docUris) {
         ListMultimap<String, RaptureURI> repoToUriMap = ArrayListMultimap.create();
-        List<DocumentWithMeta> documents = new ArrayList<DocumentWithMeta>();
+        List<DocumentWithMeta> documents = new ArrayList<>();
 
         if (docUris == null) {
             return null;
         } else if (docUris.isEmpty()) {
-            return new ArrayList<DocumentWithMeta>();
+            return new ArrayList<>();
         }
 
         for (String docUri : docUris) {
@@ -531,7 +544,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
         if (docUris.size() != contents.size()) {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, apiMessageCatalog.getMessage("ArgSizeNotEqual"));
         }
-        List<Object> retList = new ArrayList<Object>();
+        List<Object> retList = new ArrayList<>();
         for (int i = 0; i < docUris.size(); i++) {
             try {
                 // go back out to wrapper in ordere to verify entitlement
@@ -576,7 +589,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
         if (docUris.size() != toDocUris.size()) {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST, apiMessageCatalog.getMessage("ArgSizeNotEqual"));
         }
-        List<String> ret = new ArrayList<String>();
+        List<String> ret = new ArrayList<>();
         for (int i = 0; i < docUris.size(); i++) {
             try {
                 // renameDoc now handles its own entitlements since there are
@@ -727,7 +740,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
         ReflexTreeWalker walker = indexScriptCache.getReflexScript(contentKey, script.getScript(), handler);
         walker.reset();
         ReflexRaptureScript rs = new ReflexRaptureScript();
-        Map<String, Object> extraVals = new HashMap<String, Object>();
+        Map<String, Object> extraVals = new HashMap<>();
         extraVals.put("document", JacksonUtil.getMapFromJson(content));
         extraVals.put("displayName", displayName);
         ReflexValue value = rs.runProgram(context, walker, null, extraVals, script);
@@ -784,7 +797,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
     public Map<String, RaptureFolderInfo> listDocsByUriPrefix(CallingContext context, String uriPrefix, int depth) {
         RaptureURI internalUri = new RaptureURI(uriPrefix, Scheme.DOCUMENT);
         String authority = internalUri.getAuthority();
-        Map<String, RaptureFolderInfo> ret = new HashMap<String, RaptureFolderInfo>();
+        Map<String, RaptureFolderInfo> ret = new HashMap<>();
 
         // Schema level is special case.
         if (authority.isEmpty()) {
@@ -826,7 +839,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
 
         Boolean getAll = (depth <= 0);
 
-        Stack<String> parentsStack = new Stack<String>();
+        Stack<String> parentsStack = new Stack<>();
         parentsStack.push(parentDocPath);
 
         while (!parentsStack.isEmpty()) {
@@ -902,7 +915,7 @@ public class DocApiImpl extends KernelBase implements DocApi, RaptureScheme {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_BAD_REQUEST,
                     "Cannot bulk add multiple attributes since the size of the list of keys is not equal to the size of the list of values");
         }
-        Map<String, Boolean> ret = new HashMap<String, Boolean>();
+        Map<String, Boolean> ret = new HashMap<>();
         for (int i = 0; i < keys.size(); i++) {
             String key = keys.get(i);
             String interimUri = attributeUri + "/" + key;

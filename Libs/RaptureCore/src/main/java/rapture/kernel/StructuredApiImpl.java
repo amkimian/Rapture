@@ -27,21 +27,24 @@ import java.net.HttpURLConnection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
+import javax.annotation.Nullable;
+
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
+import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 
-import rapture.common.ForeignKey;
-import rapture.common.StoredProcedureParams;
-import rapture.common.StoredProcedureResponse;
 import rapture.common.CallingContext;
+import rapture.common.ForeignKey;
 import rapture.common.RaptureURI;
 import rapture.common.Scheme;
+import rapture.common.StoredProcedureParams;
+import rapture.common.StoredProcedureResponse;
 import rapture.common.StructuredRepoConfig;
 import rapture.common.StructuredRepoConfigStorage;
 import rapture.common.TableIndex;
@@ -50,8 +53,6 @@ import rapture.common.exception.RaptureExceptionFactory;
 import rapture.repo.StructuredRepo;
 import rapture.structured.DefaultValidator;
 import rapture.structured.Validator;
-
-import javax.annotation.Nullable;
 
 public class StructuredApiImpl extends KernelBase implements StructuredApi {
 
@@ -185,7 +186,11 @@ public class StructuredApiImpl extends KernelBase implements StructuredApi {
     @Override
     public Boolean tableExists(CallingContext context, String tableUri) {
         RaptureURI uri = new RaptureURI(tableUri, Scheme.STRUCTURED);
-        return getRepoOrFail(uri.getAuthority()).tableExists(uri.getDocPath());
+        try {
+            return getRepoOrFail(uri.getAuthority()).tableExists(uri.getDocPath());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
@@ -515,8 +520,6 @@ public class StructuredApiImpl extends KernelBase implements StructuredApi {
         return getRepoOrFail(uri.getAuthority()).next(uri.getDocPath(), cursorId, count);
     }
 
-    ;
-
     @Override
     public List<Map<String, Object>> previous(CallingContext context, String tableUri, String cursorId, int count) {
         validateCursorCount(count);
@@ -524,23 +527,24 @@ public class StructuredApiImpl extends KernelBase implements StructuredApi {
         return getRepoOrFail(uri.getAuthority()).previous(uri.getDocPath(), cursorId, count);
     }
 
-    ;
-
     @Override
     public void closeCursor(CallingContext context, String tableUri, String cursorId) {
         RaptureURI uri = new RaptureURI(tableUri, Scheme.STRUCTURED);
         getRepoOrFail(uri.getAuthority()).closeCursor(uri.getDocPath(), cursorId);
     }
 
-    ;
+    // Dangerous. We allow the user to supply their own SQL.
+    // This could potentially bypass entitlement checks
 
     @Override
-    public void createProcedureCallUsingSql(CallingContext context, String procUri, String rawSql) {
+    public void createStoredProcedure(CallingContext context, String procUri, String rawSql, Map<String, String> arguments) {
         RaptureURI uri = new RaptureURI(procUri);
         StructuredRepo repo = getRepoOrFail(uri.getAuthority());
         registerWithTxManager(context, repo);
+
+        String name = uri.getLeafName();
         try {
-            repo.createProcedureCallUsingSql(context, rawSql);
+            repo.createStoredProcedure(context, name, rawSql, arguments);
         } catch (Exception e) {
             TransactionManager.transactionFailed(getTxId(context));
             throw RaptureExceptionFactory.create(e.getMessage(), e.getCause());
@@ -580,8 +584,8 @@ public class StructuredApiImpl extends KernelBase implements StructuredApi {
      * @param uriStr - uri representing the structured repo
      * @param ddl    - full SQL string with CREATE and INSERT statements
      */
-    public void executeDdl(String uriStr, String ddl) {
-        getRepoOrFail(new RaptureURI(uriStr, Scheme.STRUCTURED).getAuthority()).executeDdl(ddl);
+    public void executeDdl(String uriStr, String ddl, boolean alter) {
+        getRepoOrFail(new RaptureURI(uriStr, Scheme.STRUCTURED).getAuthority()).executeDdl(ddl, alter);
     }
 
     /**
@@ -602,6 +606,48 @@ public class StructuredApiImpl extends KernelBase implements StructuredApi {
             docPaths.add(ruri.getDocPath());
         }
         return Pair.of(uri.getAuthority(), docPaths);
+    }
+
+    private String seqName(RaptureURI tableUri, String column) {
+        return tableUri.getLeafName() + "_" + column + "_seq";
+    }
+
+    @Override
+    public String createSequence(CallingContext context, String table, String column, Map<String, String> arguments) {
+        RaptureURI tableUri = new RaptureURI(table, Scheme.STRUCTURED);
+        String seqName = seqName(tableUri, column);
+
+        StructuredRepo repo = getRepoOrFail(tableUri.getAuthority());
+        registerWithTxManager(context, repo);
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("CREATE SEQUENCE ").append(seqName);
+            if (arguments != null) {
+                for (Entry<String, String> arg : arguments.entrySet()) {
+                    sb.append(" ").append(arg.getKey()).append(" ").append(arg.getValue());
+                }
+            }
+            repo.executeRawSQL(sb.append(";").toString());
+        } catch (Exception e) {
+            TransactionManager.transactionFailed(getTxId(context));
+            throw RaptureExceptionFactory.create(e.getMessage(), e.getCause());
+        }
+        return seqName;
+    }
+
+    @Override
+    public Boolean dropSequence(CallingContext context, String table, String column, Boolean cascade) {
+        RaptureURI tableUri = new RaptureURI(table, Scheme.STRUCTURED);
+        StructuredRepo repo = getRepoOrFail(tableUri.getAuthority());
+        registerWithTxManager(context, repo);
+
+        try {
+            // This might be considered a vulnerability.
+            return repo.executeRawSQL("DROP SEQUENCE IF EXISTS " + seqName(tableUri, column) + ((cascade) ? " CASCADE;" : " RESTRICT;"));
+        } catch (Exception e) {
+            TransactionManager.transactionFailed(getTxId(context));
+            throw RaptureExceptionFactory.create(e.getMessage(), e.getCause());
+        }
     }
 
 }

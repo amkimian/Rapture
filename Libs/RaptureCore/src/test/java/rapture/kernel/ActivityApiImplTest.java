@@ -23,22 +23,22 @@
  */
 package rapture.kernel;
 
-import static junit.framework.Assert.assertNotNull;
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.fail;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-
-import rapture.common.Activity;
-import rapture.common.ActivityQueryResponse;
-import rapture.common.ActivityStatus;
-import rapture.common.CallingContext;
+import static org.junit.Assert.fail;
 
 import java.util.List;
 
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import rapture.common.Activity;
+import rapture.common.ActivityQueryResponse;
+import rapture.common.ActivityStatus;
+import rapture.common.CallingContext;
 
 public class ActivityApiImplTest {
 
@@ -240,5 +240,4 @@ public class ActivityApiImplTest {
             }
         }
     }
-
 }

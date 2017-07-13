@@ -146,6 +146,11 @@ public class Login extends KernelBase {
         RaptureUser usr = Kernel.getAdmin().getUser(ContextFactory.getKernelUser(), user);
         if (usr != null) {
             log.info("Found user " + usr.getUsername());
+            if (!usr.getInactive()) {
+                log.info("User " + usr.getUsername() + " is active.");
+            } else {
+                throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_UNAUTHORIZED, String.format("user: '%s' is inactive.", user));
+            }
         } else {
             throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_UNAUTHORIZED, String.format("No such user: '%s'", user));
         }
@@ -175,9 +180,20 @@ public class Login extends KernelBase {
         return new KernelInfo();
     }
 
+    public CallingContext check(String user, String contextId) {
+        CallingContext heldContext = Kernel.getKernel().loadContext(contextId);
+        if (heldContext != null) {
+            if (heldContext.getUser().equals(user)) {
+                return heldContext;
+            }
+        }
+        return null;
+    }
+
     /**
      * @deprecated Call {@link #loginWithHash(String, String, ApiVersion)} instead
      */
+    @Deprecated
     public CallingContext loginWithHash(String userName, String hashPassword) {
         return loginWithHash(userName, hashPassword, null);
     }
@@ -205,6 +221,7 @@ public class Login extends KernelBase {
     /**
      * @deprecated Call {@link #login(String, String, ApiVersion)} instead
      */
+    @Deprecated
     public CallingContext login(String userName, String password) {
         return login(userName, password, null);
     }

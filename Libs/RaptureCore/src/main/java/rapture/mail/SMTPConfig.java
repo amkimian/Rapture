@@ -29,15 +29,48 @@ public class SMTPConfig {
     private String username;
     private String password;
     private String from;
+    private String debug = null; // Logging level to write mail transcript out. See org.apache.log4j.Level
+
+    private boolean authentication = false;
+    private boolean tlsenable = false;
+    private boolean tlsrequired = false;
+
 
     public String getUsername() {
         return username;
     }
 
+    public boolean isAuthentication() {
+        return authentication;
+    }
+
+    public SMTPConfig setAuthentication(boolean authentication) {
+        this.authentication = authentication;
+        return this;
+    }
+
+    public boolean isTlsenable() {
+        return tlsenable;
+    }
+
+    public SMTPConfig setTlsenable(boolean tlsenable) {
+        this.tlsenable = tlsenable;
+        return this;
+    }
+
+    public boolean isTlsrequired() {
+        return tlsrequired;
+    }
+
+    public SMTPConfig setTlsrequired(boolean tlsrequired) {
+        this.tlsrequired = tlsrequired;
+        return this;
+    }
+
     @Override
     public String toString() {
-        return "SMTPConfig [host=" + host + ", port=" + port + ", username=" + username + ", password=" + password.replaceAll(".", "*") + ", from=" + from
-                + "]";
+        return "SMTPConfig [host=" + host + ", port=" + port + ", username=" + username + ", password=" + password + ", from=" + from + ", authentication="
+                + authentication + ", tlsenable=" + tlsenable + ", tlsrequired=" + tlsrequired + "]";
     }
 
     public SMTPConfig setUsername(String username) {
@@ -78,6 +111,15 @@ public class SMTPConfig {
 
     public SMTPConfig setFrom(String from) {
         this.from = from;
+        return this;
+    }
+
+    public String getDebug() {
+        return debug;
+    }
+
+    public SMTPConfig setDebug(String debug) {
+        this.debug = debug;
         return this;
     }
 }

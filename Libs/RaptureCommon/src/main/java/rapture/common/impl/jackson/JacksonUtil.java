@@ -23,25 +23,27 @@
  */
 package rapture.common.impl.jackson;
 
-import rapture.common.exception.ExceptionToString;
-import rapture.common.exception.RaptureExceptionFactory;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.io.InputStream;
 
 import org.apache.log4j.Logger;
 
 import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator.Feature;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.google.common.base.Charsets;
+
+import rapture.common.exception.ExceptionToString;
+import rapture.common.exception.RaptureExceptionFactory;
 
 /**
  * Copied from standard jackson utility classes
@@ -56,9 +58,17 @@ import com.google.common.base.Charsets;
 public final class JacksonUtil {
     private static final Logger log = Logger.getLogger(JacksonUtil.class);
 
-    public static final ObjectMapper DEFAULT_MAPPER = MapperFactory.createDefault();
-    private static final ObjectWriter PRETTY_PRINTER = DEFAULT_MAPPER.writerWithDefaultPrettyPrinter();
+    public static final ObjectMapper DEFAULT_MAPPER;
+    private static final ObjectWriter PRETTY_PRINTER;
 
+    static {
+        DEFAULT_MAPPER = MapperFactory.createDefault();
+        DEFAULT_MAPPER.getFactory().enable(Feature.WRITE_BIGDECIMAL_AS_PLAIN);
+        DEFAULT_MAPPER.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+        PRETTY_PRINTER = DEFAULT_MAPPER.writerWithDefaultPrettyPrinter();
+        PRETTY_PRINTER.getFactory().enable(Feature.WRITE_BIGDECIMAL_AS_PLAIN);
+
+    }
     public static Map<String, Object> getHashFromObject(Object obj) {
         return getMapFromJson(jsonFromObject(obj));
     }
@@ -86,13 +96,25 @@ public final class JacksonUtil {
     }
 
     public static String jsonFromObject(Object object) {
-        StringWriter writer = new StringWriter();
+        return jsonFromObject(object, false);
+    }
+    
+    public static String formattedJsonFromObject(Object object) {
+        return jsonFromObject(object, true);
+    }
+
+    public static String jsonFromObject(Object object, boolean formatted) {
         try {
-            DEFAULT_MAPPER.writeValue(writer, object);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            if (formatted) {
+                return PRETTY_PRINTER.writeValueAsString(DEFAULT_MAPPER.valueToTree(object));
+            } else {
+                StringWriter writer = new StringWriter();
+                DEFAULT_MAPPER.writeValue(writer, object);
+                return writer.toString();
+            }
+        } catch (IOException | IllegalArgumentException e) {
+            throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_INTERNAL_ERROR, "Cannot create JSON from object ", e);
         }
-        return writer.toString();
     }
 
     public static byte[] bytesJsonFromObject(Object object) {
@@ -100,7 +122,7 @@ public final class JacksonUtil {
         try {
             DEFAULT_MAPPER.writeValue(os, object);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw RaptureExceptionFactory.create(HttpURLConnection.HTTP_INTERNAL_ERROR, "Cannot create JSON from object ", e);
         }
         return os.toByteArray();
     }
@@ -138,6 +160,13 @@ public final class JacksonUtil {
         return object;
     }
 
+    /**
+     * Very inefficient.
+     * 
+     * @param json
+     * @return
+     */
+    @Deprecated
     public static String prettyfy(String json) {
         JsonNode node = treeFromJson(json);
         try {

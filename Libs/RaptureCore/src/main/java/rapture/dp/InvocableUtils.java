@@ -55,11 +55,16 @@ public class InvocableUtils {
 
     public static void writeWorkflowAuditEntry(CallingContext ctx, String workerURI, String message, Boolean error) {
         Worker worker = getWorker(workerURI);
-        String appStatusURI = worker.getAppStatusNameStack().get(0);
-        if (appStatusURI != null && !appStatusURI.isEmpty()) {
+        String appStatusURI = null;
+        if (worker != null) {
+            List<String> asns = worker.getAppStatusNameStack();
+            if (asns != null && !asns.isEmpty()) appStatusURI = asns.get(0);
+        }
+        if (!StringUtils.isEmpty(appStatusURI)) {
             logger.trace("Worker URI is " + workerURI + "APPSTATUS is " + appStatusURI);
             List<StepRecord> steps = StepRecordUtil.getStepRecords(worker);
-            String currStep = steps.get(steps.size() - 1).getName();
+
+            String currStep = (steps.size() > 0) ? steps.get(steps.size() - 1).getName() : "UNKNOWN";
             String auditUri = getWorkflowAuditLog(appStatusURI, worker.getWorkOrderURI(), currStep);
             logger.debug(String.format("audit uri is %s, appStatus uri %s", auditUri, appStatusURI));
             Kernel.getAudit().writeAuditEntry(ctx, auditUri, error ? "ERROR" : "workflow", error ? 2 : 1, message);
@@ -133,7 +138,7 @@ public class InvocableUtils {
 
     public static Map<String, String> getLocalViewOverlay(Worker worker) {
         if (!worker.getLocalView().isEmpty()) {
-            Map<String, String> ret = new HashMap<String, String>();
+            Map<String, String> ret = new HashMap<>();
             Map<String, String> viewOverlay = worker.getViewOverlay();
             Map<String, String> localOverlay = worker.getLocalView().get(0);
             ret.putAll(localOverlay);

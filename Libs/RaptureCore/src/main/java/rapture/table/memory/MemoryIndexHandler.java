@@ -23,6 +23,18 @@
  */
 package rapture.table.memory;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.log4j.Logger;
+
+import com.google.common.base.Predicate;
+
 import rapture.common.TableQuery;
 import rapture.common.TableQueryResult;
 import rapture.common.TableRecord;
@@ -30,29 +42,15 @@ import rapture.common.model.DocumentMetadata;
 import rapture.dsl.iqry.IndexQuery;
 import rapture.dsl.iqry.IndexQueryFactory;
 import rapture.dsl.iqry.OrderDirection;
-import rapture.dsl.iqry.WhereClause;
-import rapture.dsl.iqry.WhereExtension;
-import rapture.dsl.iqry.WhereStatement;
-import rapture.index.IndexHandler;
+import rapture.index.AbstractIndexHandler;
 import rapture.index.IndexProducer;
 import rapture.index.IndexRecord;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
-import org.apache.log4j.Logger;
-
-import com.google.common.base.Predicate;
 
 /*
  * An in memory table, primarily for testing
  * 
  */
-public class MemoryIndexHandler implements IndexHandler {
+public class MemoryIndexHandler extends AbstractIndexHandler {
     protected static Logger log = Logger.getLogger(MemoryIndexHandler.class);
 
     protected Map<String, Map<String, Object>> memoryView = null;
@@ -74,7 +72,7 @@ public class MemoryIndexHandler implements IndexHandler {
     }
 
     private void reset() {
-        memoryView = new HashMap<>();
+        memoryView = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -87,8 +85,12 @@ public class MemoryIndexHandler implements IndexHandler {
     public void addedRecord(String key, String value, DocumentMetadata mdLatest) {
         List<IndexRecord> records = indexProducer.getIndexRecords(key, value, mdLatest);
         for (IndexRecord record : records) {
-            memoryView.put(key, record.getValues());
-            memoryView.get(key).put(ROWID, key);
+            Map<String, Object> values = record.getValues();
+            if (values != null) {
+                // Should be set but Continuous build #80 failed because values was null
+                values.put(ROWID, key);
+                memoryView.put(key, values);
+            }
         }
     }
 
@@ -104,7 +106,7 @@ public class MemoryIndexHandler implements IndexHandler {
 
     @Override
     public List<TableRecord> queryTable(TableQuery query) {
-        return new ArrayList<TableRecord>();
+        return new ArrayList<>();
     }
 
     @Override
@@ -136,6 +138,7 @@ public class MemoryIndexHandler implements IndexHandler {
                 for (String columnName : columnNames) {
                     row.add(body.get(columnName));
                 }
+                if (indexQuery.isDistinct() && rows.contains(row)) continue;
                 rows.add(row);
             }
         }
@@ -147,72 +150,18 @@ public class MemoryIndexHandler implements IndexHandler {
             }
         }
 
-        if (indexQuery.getLimit() != 0) {
-            rows = rows.subList(0, indexQuery.getLimit());
+        int skip = indexQuery.getSkip();
+        if (skip < 0) skip = 0;
+        if (skip < rows.size()) {
+            int limit = indexQuery.getLimit();
+
+            if ((limit > 0) && (rows.size() - skip > limit)) {
+                result.setRows(rows.subList(skip, skip + limit));
+            } else {
+                result.setRows(rows);
+            }
         }
-
-        result.setRows(rows);
-
         return result;
-    }
-
-    private List<Predicate<Map<String, Object>>> predicatesFromQuery(IndexQuery parsedQuery) {
-        List<Predicate<Map<String, Object>>> predicates = new LinkedList<>();
-        WhereClause whereClause = parsedQuery.getWhere();
-        if (whereClause.getPrimary() != null) {
-            predicates.add(predicateFromClause(whereClause.getPrimary()));
-        }
-        if (!whereClause.getExtensions().isEmpty()) {
-            for (WhereExtension whereExtension : whereClause.getExtensions()) {
-                predicates.add(predicateFromClause(whereExtension.getClause()));
-            }
-        }
-        return predicates;
-    }
-
-    private Predicate<Map<String, Object>> predicateFromClause(final WhereStatement statement) {
-        return new Predicate<Map<String, Object>>() {
-            @Override
-            public boolean apply(Map<String, Object> input) {
-                String fieldName = statement.getField();
-                Object queryValue = statement.getValue().getValue();
-                Object actualValue = input.get(fieldName);
-                if (queryValue != null && actualValue != null && statement.getClass().equals(actualValue.getClass())) {
-                    return compare((Comparable) actualValue, (Comparable) queryValue);
-                } else {
-                    String actualValueString;
-                    if (actualValue != null) {
-                        actualValueString = actualValue.toString();
-                    } else {
-                        actualValueString = null;
-                    }
-
-                    String queryValueString;
-                    if (queryValue != null) {
-                        queryValueString = queryValue.toString();
-                    } else {
-                        queryValueString = null;
-                    }
-                    return compare(actualValueString, queryValueString);
-                }
-            }
-
-            protected <T extends Comparable<T>> boolean compare(T actualValue, T queryValue) {
-                switch (statement.getOper()) {
-                    case GT:
-                        return actualValue != null && actualValue.compareTo(queryValue) > 0;
-                    case LT:
-                        return actualValue != null && actualValue.compareTo(queryValue) < 0;
-                    case NOTEQUAL:
-                        return actualValue != null && !queryValue.equals(actualValue);
-                    case EQUAL:
-                        return queryValue.equals(actualValue);
-                    default:
-                        return false;
-                }
-            }
-
-        };
     }
 
     @Override
